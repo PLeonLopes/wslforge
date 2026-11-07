@@ -1,0 +1,70 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run ShellCheck
+        run: |
+          mapfile -t files < <(git ls-files '*.sh' '*.bash')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No shell scripts found, skipping."
+            exit 0
+          fi
+          shellcheck --version
+          shellcheck --external-sources "${files[@]}"
+
+  psscriptanalyzer:
+    name: PSScriptAnalyzer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          $files = @(git ls-files '*.ps1' '*.psm1')
+          if ($files.Count -eq 0) {
+            Write-Output 'No PowerShell scripts found, skipping.'
+            exit 0
+          }
+          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+            Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          }
+          $results = $files | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Warning, Error }
+          if ($results) {
+            $results | Format-Table -AutoSize
+            exit 1
+          }
+          Write-Output "PSScriptAnalyzer: $($files.Count) file(s) clean."
+
+      # Windows PowerShell 5.1 misreads non-ASCII text (em dashes, smart quotes,
+      # symbols like a check mark) in BOM-less files, so .ps1 must stay ASCII.
+      - name: Check PowerShell scripts are ASCII-only
+        run: |
+          mapfile -t files < <(git ls-files '*.ps1' '*.psm1')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No PowerShell scripts found, skipping."
+            exit 0
+          fi
+          if grep -nP '[^\x00-\x7F]' "${files[@]}"; then
+            echo "::error::Non-ASCII characters found in the lines above."
+            exit 1
+          fi
+          echo "All ${#files[@]} PowerShell script(s) are ASCII-only."

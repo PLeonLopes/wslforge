@@ -1,0 +1,22 @@
+# Local wslforge state / personal config (examples/ stays tracked)
+/wslforge.conf
+.wslforge/
+*.log
+
+# PR descriptions generated locally
+*_pr_description.md
+*_pr_description.txt
+
+# Test artifacts
+tests/tmp/
+*.tar
+*.tar.gz
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
