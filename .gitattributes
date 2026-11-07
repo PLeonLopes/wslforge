@@ -1,0 +1,14 @@
+# Normalize line endings: scripts must keep LF even when cloned on Windows,
+# otherwise bash fails with "$'\r': command not found".
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.bash text eol=lf
+*.ps1  text eol=lf
+*.md   text eol=lf
+
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.tar  binary
+*.gz   binary
