@@ -2,18 +2,30 @@
 # Base packages every other module relies on (compilers, curl, gnupg, ...).
 
 MODULE_NAME='Base packages'
-MODULE_DESC='Build tools, curl, wget, gnupg, zip/unzip, jq, htop, tree'
 MODULE_ORDER=10
 MODULE_DEFAULT=on
 MODULE_REQUIRED=yes
 MODULE_FAMILIES='apt'
 
-BASE_PACKAGES=(build-tools ca-certificates curl wget gnupg zip unzip jq htop tree less)
+# "id|description". Item ids are logical package names (see lib/pkg.sh).
+MODULE_ITEMS=(
+  'build-tools|Compilers and make (build-essential)'
+  'ca-certificates|Trusted certificates for HTTPS'
+  'curl|Transfer data from URLs'
+  'gnupg|Verify signatures of third-party repositories'
+  'wget|Download files from the web'
+  'zip|Create .zip archives'
+  'unzip|Extract .zip archives'
+  'jq|Query and edit JSON on the command line'
+  'htop|Interactive process viewer'
+  'tree|Show directories as a tree'
+  'less|Scroll through long output and files'
+)
 
 is_installed() {
-  pkgs_installed "${BASE_PACKAGES[@]}"
+  pkgs_installed "$1"
 }
 
 do_install() {
-  pkg_install "${BASE_PACKAGES[@]}"
+  pkg_install "$@"
 }

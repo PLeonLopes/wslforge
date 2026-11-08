@@ -34,6 +34,19 @@ in_list() {
   return 1
 }
 
+# join_by SEPARATOR ITEM...: print the items joined by SEPARATOR.
+join_by() {
+  local sep=$1 out='' item
+  shift
+  [[ $# -gt 0 ]] || return 0
+  out=$1
+  shift
+  for item in "$@"; do
+    out+="$sep$item"
+  done
+  printf '%s' "$out"
+}
+
 # ---------------------------------------------------------------- execution
 
 _print_dry() { printf '    %s[dry-run]%s %s\n' "$C_DIM" "$C_RESET" "$*"; }

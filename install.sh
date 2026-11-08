@@ -104,9 +104,10 @@ load_config() {
 }
 
 # ---------------------------------------------------------------- modules
-# Each modules/<id>.sh defines MODULE_* metadata plus is_installed and
-# do_install (configure and notes are optional). Modules are always sourced in
-# a subshell so their functions and variables never clash.
+# Each modules/<id>.sh defines MODULE_* metadata, a MODULE_ITEMS list of
+# "id|description" tools, is_installed ITEM and do_install ITEM...
+# (configure and notes are optional). Modules are always sourced in a
+# subshell so their functions and variables never clash.
 
 module_field() {
   (
@@ -116,12 +117,39 @@ module_field() {
   )
 }
 
-module_is_installed() {
+# module_items ID: print one "item|state|description" line per tool, where
+# state is "installed" or "missing".
+module_items() {
   (
     # shellcheck disable=SC1090
     source "$MODULES_DIR/$1.sh"
-    is_installed
-  ) >/dev/null 2>&1
+    local entry item desc state supported=0
+    if module_supported "$1"; then
+      supported=1
+    fi
+    for entry in "${MODULE_ITEMS[@]}"; do
+      IFS='|' read -r item desc <<<"$entry"
+      if ((supported)) && is_installed "$item" >/dev/null 2>&1; then
+        state=installed
+      else
+        state=missing
+      fi
+      printf '%s|%s|%s\n' "$item" "$state" "$desc"
+    done
+  )
+}
+
+# module_tag ID: short label for how a module gets selected.
+module_tag() {
+  if ! module_supported "$1"; then
+    echo "not supported on $DISTRO_FAMILY"
+  elif [[ $(module_field "$1" MODULE_REQUIRED) == yes ]]; then
+    echo always
+  elif [[ $(module_field "$1" MODULE_DEFAULT) == on ]]; then
+    echo default
+  else
+    echo optional
+  fi
 }
 
 module_supported() {
@@ -175,20 +203,37 @@ run_module() {
 
   # Run in a subshell with errexit on, so a failing module stops itself
   # without stopping the others. Exit 10 means "already installed".
+  # The subshell writes a one-line summary to $RUN_DIR/<id>.result.
+  local result_file="$RUN_DIR/$id.result" text
   set +e
   (
     set -euo pipefail
     # shellcheck disable=SC1090
     source "$MODULES_DIR/$id.sh"
-    status=0
-    if is_installed; then
+    entry='' item='' missing=() failed=() status=0
+    for entry in "${MODULE_ITEMS[@]}"; do
+      item=${entry%%|*}
+      is_installed "$item" >/dev/null 2>&1 || missing+=("$item")
+    done
+
+    if ((${#missing[@]} == 0)); then
       log_info "↷ Already installed"
       status=10
     else
-      do_install
-      if [[ $DRY_RUN != 1 ]] && ! is_installed; then
-        log_error "Installed, but verification failed."
-        exit 2
+      log_info "Installing: $(join_by ', ' "${missing[@]}")"
+      do_install "${missing[@]}"
+      if [[ $DRY_RUN == 1 ]]; then
+        echo "would install: $(join_by ', ' "${missing[@]}")" >"$result_file"
+      else
+        for item in "${missing[@]}"; do
+          is_installed "$item" >/dev/null 2>&1 || failed+=("$item")
+        done
+        if ((${#failed[@]})); then
+          echo "verification failed: $(join_by ', ' "${failed[@]}")" >"$result_file"
+          log_error "Installed, but verification failed for: $(join_by ', ' "${failed[@]}")"
+          exit 2
+        fi
+        echo "installed: $(join_by ', ' "${missing[@]}")" >"$result_file"
       fi
     fi
     if declare -F configure >/dev/null; then
@@ -202,19 +247,20 @@ run_module() {
   rc=$?
   set -e
 
+  text=$(cat "$result_file" 2>/dev/null || true)
   case $rc in
     0)
       if [[ $DRY_RUN == 1 ]]; then
-        RESULTS+=("•|$id|would be installed")
+        RESULTS+=("•|$id|$text")
       else
         log_ok "Done"
-        RESULTS+=("✔|$id|installed")
+        RESULTS+=("✔|$id|$text")
       fi
       ;;
     10) RESULTS+=("↷|$id|already installed") ;;
     *)
       log_error "Module '$id' failed (exit code $rc)."
-      RESULTS+=("✖|$id|failed")
+      RESULTS+=("✖|$id|${text:-failed}")
       FAILED=$((FAILED + 1))
       ;;
   esac
@@ -226,36 +272,48 @@ print_header() {
   printf '%swslforge %s%s on %s (%s)\n' "$C_BOLD" "$WSLFORGE_VERSION" "$C_RESET" "$DISTRO_NAME" "$DISTRO_FAMILY"
 }
 
+# print_module_title ID: "id  Module name  [tag]"
+print_module_title() {
+  printf '\n  %s%-6s%s %s  %s[%s]%s\n' "$C_BOLD" "$1" "$C_RESET" \
+    "$(module_field "$1" MODULE_NAME)" "$C_DIM" "$(module_tag "$1")" "$C_RESET"
+}
+
 list_modules() {
-  local id status default
-  printf '\n  %-10s %-15s %-9s %s\n' MODULE STATUS DEFAULT DESCRIPTION
+  local id item state desc mark
   while IFS= read -r id; do
-    if ! module_supported "$id"; then
-      status='not supported'
-    elif module_is_installed "$id"; then
-      status='installed'
-    else
-      status='not installed'
-    fi
-    default=$(module_field "$id" MODULE_DEFAULT)
-    [[ $(module_field "$id" MODULE_REQUIRED) == yes ]] && default='always'
-    printf '  %-10s %-15s %-9s %s\n' "$id" "$status" "$default" "$(module_field "$id" MODULE_DESC)"
+    print_module_title "$id"
+    while IFS='|' read -r item state desc; do
+      mark='·'
+      [[ $state == installed ]] && mark="$C_GREEN✔$C_RESET"
+      printf '    %s %-16s %s\n' "$mark" "$item" "$desc"
+    done < <(module_items "$id")
   done < <(module_ids)
-  echo
+  printf '\n  %s✔%s installed   · not installed\n\n' "$C_GREEN" "$C_RESET"
 }
 
 print_plan() {
-  local id
+  local id item state desc installed
   log_step "Plan"
   for id in "${SELECTED[@]}"; do
+    print_module_title "$id"
     if ! module_supported "$id"; then
-      log_info "○ $id (not supported here)"
-    elif module_is_installed "$id"; then
-      log_info "↷ $id (already installed)"
-    else
-      log_info "• $id"
+      log_info "  ○ skipped: not supported on $DISTRO_FAMILY-based distros"
+      continue
+    fi
+    installed=()
+    while IFS='|' read -r item state desc; do
+      if [[ $state == installed ]]; then
+        installed+=("$item")
+      else
+        printf '      + %-16s %s\n' "$item" "$desc"
+      fi
+    done < <(module_items "$id")
+    if ((${#installed[@]})); then
+      printf '      %s↷ already installed: %s%s\n' "$C_DIM" "$(join_by ', ' "${installed[@]}")" "$C_RESET"
     fi
   done
+  printf '\n  + will be installed   ↷ already installed\n'
+  printf '  See every module and tool with: ./install.sh --list\n'
 }
 
 print_summary() {

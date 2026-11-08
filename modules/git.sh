@@ -2,33 +2,51 @@
 # Git, Git LFS, GitHub CLI and the global git identity.
 
 MODULE_NAME='Git + GitHub CLI'
-MODULE_DESC='git, git-lfs, gh and your git identity (name/email)'
 MODULE_ORDER=30
 MODULE_DEFAULT=on
 MODULE_FAMILIES='apt'
 
-GIT_PACKAGES=(git git-lfs ssh-client)
+MODULE_ITEMS=(
+  'git|Version control, plus your git identity (name/email)'
+  'git-lfs|Git extension for large files'
+  'ssh-client|SSH client, used to push and pull over SSH'
+  'gh|GitHub CLI: login, pull requests, issues'
+)
 
 is_installed() {
-  pkgs_installed "${GIT_PACKAGES[@]}" && has_cmd gh
+  case $1 in
+    gh) has_cmd gh ;;
+    *) pkgs_installed "$1" ;;
+  esac
 }
 
 do_install() {
-  pkg_install "${GIT_PACKAGES[@]}"
+  local item packages=()
+  for item in "$@"; do
+    [[ $item == gh ]] || packages+=("$item")
+  done
+  if ((${#packages[@]})); then
+    pkg_install "${packages[@]}"
+  fi
 
   # The distro gh packages lag behind, so use GitHub's official repository.
-  if ! has_cmd gh; then
+  if in_list gh "$@"; then
     apt_add_repo github-cli \
       https://cli.github.com/packages/githubcli-archive-keyring.gpg \
       'https://cli.github.com/packages stable main'
     pkg_install gh
   fi
 
-  run git lfs install --skip-repo
+  if in_list git-lfs "$@"; then
+    run git lfs install --skip-repo
+  fi
 }
 
 # Runs on every execution, so the identity can be set or changed later.
 configure() {
+  if ! has_cmd git && [[ $DRY_RUN != 1 ]]; then
+    return 0
+  fi
   if [[ -z $(git config --global --get init.defaultBranch 2>/dev/null) ]]; then
     run git config --global init.defaultBranch main
   fi
@@ -52,10 +70,10 @@ _git_identity() {
 }
 
 notes() {
-  if [[ -z $(git config --global --get user.name 2>/dev/null) || -z $(git config --global --get user.email 2>/dev/null) ]]; then
+  if has_cmd git && [[ -z $(git config --global --get user.name) || -z $(git config --global --get user.email) ]]; then
     echo 'Set your git identity: git config --global user.name "Your Name" && git config --global user.email "you@example.com"'
   fi
-  if ! gh auth status >/dev/null 2>&1; then
+  if has_cmd gh && ! gh auth status >/dev/null 2>&1; then
     echo 'Log in to GitHub: gh auth login (choose SSH; it can create and upload a key for you)'
   fi
 }
