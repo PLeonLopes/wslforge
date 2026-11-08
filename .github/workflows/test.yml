@@ -1,0 +1,43 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  idempotency:
+    name: Install twice (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    container: ${{ matrix.image }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['ubuntu:24.04', 'debian:13']
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: First run installs everything
+        run: ./install.sh --yes
+
+      # A second run must find every tool already installed and change nothing.
+      - name: Second run changes nothing
+        run: |
+          set -o pipefail
+          ./install.sh --yes | tee second-run.log
+          if grep -q 'Installing:' second-run.log; then
+            echo "::error::The second run tried to install something again."
+            exit 1
+          fi
