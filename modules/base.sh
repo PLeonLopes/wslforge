@@ -7,12 +7,13 @@ MODULE_DEFAULT=on
 MODULE_REQUIRED=yes
 MODULE_FAMILIES='apt'
 
-# "id|description". Item ids are logical package names (see lib/pkg.sh).
+# "id|description[|required]". Item ids are logical package names (see
+# lib/pkg.sh). Required items are used by other modules and cannot be skipped.
 MODULE_ITEMS=(
-  'build-tools|Compilers and make (build-essential)'
-  'ca-certificates|Trusted certificates for HTTPS'
-  'curl|Transfer data from URLs'
-  'gnupg|Verify signatures of third-party repositories'
+  'build-tools|Compilers and make (build-essential)|required'
+  'ca-certificates|Trusted certificates for HTTPS|required'
+  'curl|Transfer data from URLs|required'
+  'gnupg|Verify signatures of third-party repositories|required'
   'wget|Download files from the web'
   'zip|Create .zip archives'
   'unzip|Extract .zip archives'

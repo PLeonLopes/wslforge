@@ -19,12 +19,15 @@ source "$WSLFORGE_DIR/lib/pkg.sh"
 ACTION=install
 CONFIG_FILE=''
 ONLY=''
+SKIP_ARG=''
 MODULES=''    # comma-separated module ids; empty = modules enabled by default
+SKIP=''       # comma-separated module or tool ids to leave out
 GIT_NAME=''
 GIT_EMAIL=''
-CONFIG_KEYS=(MODULES GIT_NAME GIT_EMAIL)
+CONFIG_KEYS=(MODULES SKIP GIT_NAME GIT_EMAIL)
 
 # Runtime state.
+SKIP_LIST=()
 SELECTED=()
 RESULTS=()
 FAILED=0
@@ -41,6 +44,7 @@ Usage: ./install.sh [options]
 Options:
   --list           List the available modules and whether they are installed
   --only LIST      Install only these modules (comma-separated, e.g. git,cli)
+  --skip LIST      Leave out modules or single tools (e.g. --skip tmux,htop)
   --config FILE    Read settings from a wslforge.conf file
   --dry-run        Show what would be done without changing anything
   -y, --yes        Never prompt (no confirmation, no questions)
@@ -48,7 +52,12 @@ Options:
   --version        Show the version
 
 Without --only (or MODULES in the config), the default modules are installed.
-The "base" module is always included.
+The "base" module and the tools other modules depend on are always included.
+
+Examples:
+  ./install.sh --list                   # see every module and tool
+  ./install.sh --skip tmux,htop         # default modules, minus two tools
+  ./install.sh --only cli --skip bat    # just the CLI tools, without bat
 EOF
 }
 
@@ -62,6 +71,12 @@ parse_args() {
         shift
         ;;
       --only=*) ONLY=${1#*=} ;;
+      --skip)
+        [[ $# -ge 2 ]] || die "--skip needs a value (e.g. --skip tmux,htop)"
+        SKIP_ARG=$2
+        shift
+        ;;
+      --skip=*) SKIP_ARG=${1#*=} ;;
       --config)
         [[ $# -ge 2 ]] || die "--config needs a file path"
         CONFIG_FILE=$2
@@ -117,26 +132,68 @@ module_field() {
   )
 }
 
-# module_items ID: print one "item|state|description" line per tool, where
-# state is "installed" or "missing".
+# module_items ID: print one "item|state|description|flags" line per tool,
+# where state is "installed", "missing" or "skipped".
 module_items() {
   (
     # shellcheck disable=SC1090
     source "$MODULES_DIR/$1.sh"
-    local entry item desc state supported=0
+    local entry item desc flags state supported=0
     if module_supported "$1"; then
       supported=1
     fi
     for entry in "${MODULE_ITEMS[@]}"; do
-      IFS='|' read -r item desc <<<"$entry"
-      if ((supported)) && is_installed "$item" >/dev/null 2>&1; then
+      IFS='|' read -r item desc flags <<<"$entry"
+      if item_skipped "$item"; then
+        state=skipped
+      elif ((supported)) && is_installed "$item" >/dev/null 2>&1; then
         state=installed
       else
         state=missing
       fi
-      printf '%s|%s|%s\n' "$item" "$state" "$desc"
+      printf '%s|%s|%s|%s\n' "$item" "$state" "$desc" "$flags"
     done
   )
+}
+
+# module_item_flags ID: print "item|flags" per tool (no install checks).
+module_item_flags() {
+  (
+    # shellcheck disable=SC1090
+    source "$MODULES_DIR/$1.sh"
+    local entry item desc flags
+    for entry in "${MODULE_ITEMS[@]}"; do
+      IFS='|' read -r item desc flags <<<"$entry"
+      printf '%s|%s\n' "$item" "$flags"
+    done
+  )
+}
+
+item_skipped() {
+  ((${#SKIP_LIST[@]})) && in_list "$1" "${SKIP_LIST[@]}"
+}
+
+# validate_skips: every --skip name must be a known module or tool, and
+# required modules/tools cannot be skipped.
+validate_skips() {
+  local name id item flags found
+  for name in "${SKIP_LIST[@]}"; do
+    if [[ -f $MODULES_DIR/$name.sh ]]; then
+      [[ $(module_field "$name" MODULE_REQUIRED) == yes ]] &&
+        die "The '$name' module is required and cannot be skipped."
+      continue
+    fi
+    found=0
+    while IFS= read -r id; do
+      while IFS='|' read -r item flags; do
+        [[ $item == "$name" ]] || continue
+        [[ $flags == *required* ]] &&
+          die "'$name' is needed by other modules and cannot be skipped."
+        found=1
+      done < <(module_item_flags "$id")
+    done < <(module_ids)
+    ((found)) || die "Unknown module or tool in --skip: $name (see ./install.sh --list)"
+  done
 }
 
 # module_tag ID: short label for how a module gets selected.
@@ -178,7 +235,9 @@ select_modules() {
   fi
 
   for id in "${all[@]}"; do
-    if [[ $(module_field "$id" MODULE_REQUIRED) == yes ]]; then
+    if item_skipped "$id"; then
+      continue
+    elif [[ $(module_field "$id" MODULE_REQUIRED) == yes ]]; then
       SELECTED+=("$id")
     elif ((${#requested[@]})); then
       if in_list "$id" "${requested[@]}"; then
@@ -210,20 +269,33 @@ run_module() {
     set -euo pipefail
     # shellcheck disable=SC1090
     source "$MODULES_DIR/$id.sh"
-    entry='' item='' missing=() failed=() status=0
+    entry='' item='' missing=() failed=() skipped=() status=0
     for entry in "${MODULE_ITEMS[@]}"; do
       item=${entry%%|*}
-      is_installed "$item" >/dev/null 2>&1 || missing+=("$item")
+      if item_skipped "$item"; then
+        skipped+=("$item")
+      elif ! is_installed "$item" >/dev/null 2>&1; then
+        missing+=("$item")
+      fi
     done
+    suffix=''
+    if ((${#skipped[@]})); then
+      suffix=" (skipped: $(join_by ', ' "${skipped[@]}"))"
+      log_info "- Skipping: $(join_by ', ' "${skipped[@]}")"
+    fi
 
-    if ((${#missing[@]} == 0)); then
+    if ((${#skipped[@]} == ${#MODULE_ITEMS[@]})); then
+      echo "skipped" >"$result_file"
+      exit 11
+    elif ((${#missing[@]} == 0)); then
       log_info "↷ Already installed"
+      echo "already installed$suffix" >"$result_file"
       status=10
     else
       log_info "Installing: $(join_by ', ' "${missing[@]}")"
       do_install "${missing[@]}"
       if [[ $DRY_RUN == 1 ]]; then
-        echo "would install: $(join_by ', ' "${missing[@]}")" >"$result_file"
+        echo "would install: $(join_by ', ' "${missing[@]}")$suffix" >"$result_file"
       else
         for item in "${missing[@]}"; do
           is_installed "$item" >/dev/null 2>&1 || failed+=("$item")
@@ -233,7 +305,7 @@ run_module() {
           log_error "Installed, but verification failed for: $(join_by ', ' "${failed[@]}")"
           exit 2
         fi
-        echo "installed: $(join_by ', ' "${missing[@]}")" >"$result_file"
+        echo "installed: $(join_by ', ' "${missing[@]}")$suffix" >"$result_file"
       fi
     fi
     if declare -F configure >/dev/null; then
@@ -257,7 +329,8 @@ run_module() {
         RESULTS+=("✔|$id|$text")
       fi
       ;;
-    10) RESULTS+=("↷|$id|already installed") ;;
+    10) RESULTS+=("↷|$id|$text") ;;
+    11) RESULTS+=("-|$id|skipped (all tools)") ;;
     *)
       log_error "Module '$id' failed (exit code $rc)."
       RESULTS+=("✖|$id|${text:-failed}")
@@ -279,20 +352,23 @@ print_module_title() {
 }
 
 list_modules() {
-  local id item state desc mark
+  local id item state desc flags mark extra
   while IFS= read -r id; do
     print_module_title "$id"
-    while IFS='|' read -r item state desc; do
+    while IFS='|' read -r item state desc flags; do
       mark='·'
       [[ $state == installed ]] && mark="$C_GREEN✔$C_RESET"
-      printf '    %s %-16s %s\n' "$mark" "$item" "$desc"
+      extra=''
+      [[ $flags == *required* ]] && extra=" $C_DIM(required)$C_RESET"
+      printf '    %s %-16s %s%s\n' "$mark" "$item" "$desc" "$extra"
     done < <(module_items "$id")
   done < <(module_ids)
-  printf '\n  %s✔%s installed   · not installed\n\n' "$C_GREEN" "$C_RESET"
+  printf '\n  %s✔%s installed   · not installed\n' "$C_GREEN" "$C_RESET"
+  printf '  Leave tools or modules out with --skip, e.g. ./install.sh --skip tmux,htop\n\n'
 }
 
 print_plan() {
-  local id item state desc installed
+  local id item state desc flags installed skipped modules_skipped=()
   log_step "Plan"
   for id in "${SELECTED[@]}"; do
     print_module_title "$id"
@@ -301,19 +377,33 @@ print_plan() {
       continue
     fi
     installed=()
-    while IFS='|' read -r item state desc; do
-      if [[ $state == installed ]]; then
-        installed+=("$item")
-      else
-        printf '      + %-16s %s\n' "$item" "$desc"
-      fi
+    skipped=()
+    while IFS='|' read -r item state desc flags; do
+      case $state in
+        installed) installed+=("$item") ;;
+        skipped) skipped+=("$item") ;;
+        *) printf '      + %-16s %s\n' "$item" "$desc" ;;
+      esac
     done < <(module_items "$id")
     if ((${#installed[@]})); then
       printf '      %s↷ already installed: %s%s\n' "$C_DIM" "$(join_by ', ' "${installed[@]}")" "$C_RESET"
     fi
+    if ((${#skipped[@]})); then
+      printf '      %s- skipped: %s%s\n' "$C_DIM" "$(join_by ', ' "${skipped[@]}")" "$C_RESET"
+    fi
   done
-  printf '\n  + will be installed   ↷ already installed\n'
-  printf '  See every module and tool with: ./install.sh --list\n'
+
+  for id in "${SKIP_LIST[@]}"; do
+    if [[ -f $MODULES_DIR/$id.sh ]]; then
+      modules_skipped+=("$id")
+    fi
+  done
+  if ((${#modules_skipped[@]})); then
+    printf '\n  - skipped modules: %s\n' "$(join_by ', ' "${modules_skipped[@]}")"
+  fi
+
+  printf '\n  + will be installed   ↷ already installed   - skipped\n'
+  printf '  See every module and tool with --list; leave some out with --skip.\n'
 }
 
 print_summary() {
@@ -364,6 +454,10 @@ main() {
   parse_args "$@"
   [[ -n $CONFIG_FILE ]] && load_config "$CONFIG_FILE"
   [[ -n $ONLY ]] && MODULES=$ONLY
+  [[ -n $SKIP_ARG ]] && SKIP=$SKIP_ARG
+  if [[ -n $SKIP ]]; then
+    IFS=',' read -ra SKIP_LIST <<<"${SKIP// /}"
+  fi
 
   detect_distro
   print_header
@@ -373,6 +467,7 @@ main() {
     return 0
   fi
 
+  validate_skips
   pkg_require_supported
   is_wsl || log_warn "This does not look like WSL; continuing anyway."
 
