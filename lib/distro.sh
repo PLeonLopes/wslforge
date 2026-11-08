@@ -6,6 +6,7 @@
 DISTRO_ID=''       # e.g. debian, ubuntu
 DISTRO_NAME=''     # e.g. "Debian GNU/Linux 13 (trixie)"
 DISTRO_VERSION=''  # e.g. 13, 24.04
+DISTRO_CODENAME='' # e.g. trixie, noble (used by third-party apt repos)
 DISTRO_FAMILY=''   # apt | dnf | pacman | zypper | unknown
 
 # detect_distro: fill the DISTRO_* variables.
@@ -13,18 +14,20 @@ detect_distro() {
   local file=${OS_RELEASE_FILE:-/etc/os-release}
   [[ -r $file ]] || die "Cannot detect the distro: $file not found."
 
-  local id like name version
+  local id like name version codename
   # Source in a subshell so os-release variables do not leak into ours.
   # Fields are split on \x1f (not a tab) so empty values are preserved.
   # shellcheck disable=SC1090
-  IFS=$'\x1f' read -r id like name version < <(
+  IFS=$'\x1f' read -r id like name version codename < <(
     . "$file"
-    printf '%s\x1f%s\x1f%s\x1f%s\n' "${ID:-}" "${ID_LIKE:-}" "${PRETTY_NAME:-${NAME:-}}" "${VERSION_ID:-}"
+    printf '%s\x1f%s\x1f%s\x1f%s\x1f%s\n' "${ID:-}" "${ID_LIKE:-}" "${PRETTY_NAME:-${NAME:-}}" \
+      "${VERSION_ID:-}" "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
   )
 
   DISTRO_ID=$id
   DISTRO_NAME=${name:-$id}
   DISTRO_VERSION=$version
+  DISTRO_CODENAME=$codename
   DISTRO_FAMILY=$(distro_family "$id" "$like")
 }
 
@@ -44,7 +47,8 @@ distro_family() {
   echo unknown
 }
 
-# is_wsl: true when running inside WSL.
+# is_wsl: true when running in a WSL distro. The kernel name is not enough:
+# Docker containers on a WSL host share the same "microsoft" kernel.
 is_wsl() {
-  [[ -n ${WSL_DISTRO_NAME:-} ]] || grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null
+  [[ -n ${WSL_DISTRO_NAME:-} || -d /run/WSL ]]
 }

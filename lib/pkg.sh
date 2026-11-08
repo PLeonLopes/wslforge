@@ -76,10 +76,12 @@ pkg_install() {
 }
 
 # apt_add_repo NAME KEY_URL "URI SUITE COMPONENTS": add a signed third-party
-# apt repository. The key is stored in /etc/apt/keyrings.
+# apt repository. The key is stored in /etc/apt/keyrings (binary keys must end
+# in .gpg; anything else is treated as an ASCII-armored .asc key).
 apt_add_repo() {
-  local name=$1 key_url=$2 source=$3
-  local keyring="/etc/apt/keyrings/$name.${key_url##*.}"
+  local name=$1 key_url=$2 source=$3 ext=asc
+  [[ $key_url == *.gpg ]] && ext=gpg
+  local keyring="/etc/apt/keyrings/$name.$ext"
   local list="/etc/apt/sources.list.d/$name.list"
   local arch
   arch=$(dpkg --print-architecture)
