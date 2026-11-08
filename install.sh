@@ -22,7 +22,10 @@ ONLY=''
 SKIP_ARG=''
 MODULES=''    # comma-separated module ids; empty = modules enabled by default
 SKIP=''       # comma-separated module or tool ids to leave out
+# GIT_NAME and GIT_EMAIL are read by modules/git.sh.
+# shellcheck disable=SC2034
 GIT_NAME=''
+# shellcheck disable=SC2034
 GIT_EMAIL=''
 CONFIG_KEYS=(MODULES SKIP GIT_NAME GIT_EMAIL)
 
