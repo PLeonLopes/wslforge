@@ -5,6 +5,7 @@ MODULE_NAME='Node.js (fnm) + pnpm'
 MODULE_ORDER=50
 MODULE_DEFAULT=on
 MODULE_FAMILIES='apt'
+MODULE_ROOT=no      # installs into the home directory only
 
 MODULE_ITEMS=(
   'node|Node.js LTS, managed by fnm (switch versions per project)'
@@ -40,6 +41,6 @@ do_install() {
 
 notes() {
   if [[ -x $FNM_DIR/fnm ]] && ! has_cmd fnm; then
-    echo 'Open a new terminal to load fnm and pnpm (node, npm and pnpm will then be on your PATH).'
+    need_new_shell 'node, npm and pnpm'
   fi
 }

@@ -51,6 +51,6 @@ do_install() {
 
 notes() {
   if [[ -L $CLI_BIN_DIR/fd || -L $CLI_BIN_DIR/bat ]] && [[ ":$PATH:" != *":$CLI_BIN_DIR:"* ]]; then
-    echo "Open a new terminal so ~/.local/bin is on your PATH (needed for fd and bat)."
+    need_new_shell 'fd and bat'
   fi
 }
