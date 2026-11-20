@@ -5,6 +5,7 @@ MODULE_NAME='Python (uv)'
 MODULE_ORDER=40
 MODULE_DEFAULT=on
 MODULE_FAMILIES='apt'
+MODULE_ROOT=no      # installs into the home directory only
 
 MODULE_ITEMS=(
   'uv|Fast Python package and project manager (replaces pip, venv, pyenv)'
@@ -34,5 +35,11 @@ do_install() {
       return 1
     fi
     run "$(_uv_bin)" python install
+  fi
+}
+
+notes() {
+  if [[ -x $HOME/.local/bin/uv ]] && ! has_cmd uv; then
+    need_new_shell 'uv'
   fi
 }

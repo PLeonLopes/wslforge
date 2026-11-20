@@ -7,7 +7,7 @@ MODULE_DEFAULT=on
 MODULE_FAMILIES='apt'
 
 MODULE_ITEMS=(
-  'git|Version control, plus your git identity (name/email)'
+  'git|Version control, plus your git identity (name/email)|required'
   'git-lfs|Git extension for large files'
   'ssh-client|SSH client, used to push and pull over SSH'
   'gh|GitHub CLI: login, pull requests, issues'
@@ -73,7 +73,10 @@ notes() {
   if has_cmd git && [[ -z $(git config --global --get user.name) || -z $(git config --global --get user.email) ]]; then
     echo 'Set your git identity: git config --global user.name "Your Name" && git config --global user.email "you@example.com"'
   fi
+}
+
+actions() {
   if has_cmd gh && ! gh auth status >/dev/null 2>&1; then
-    echo 'Log in to GitHub: gh auth login (choose SSH; it can create and upload a key for you)'
+    echo 'Log in to GitHub (choose SSH; gh can create and upload a key for you)|gh auth login'
   fi
 }

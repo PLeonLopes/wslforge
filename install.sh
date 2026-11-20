@@ -4,7 +4,48 @@
 # Idempotent: safe to re-run; modules that are already installed are skipped.
 set -euo pipefail
 
-WSLFORGE_VERSION='0.1.0-dev'
+WSLFORGE_VERSION='0.2.0-dev'
+WSLFORGE_REPO_URL=${WSLFORGE_REPO_URL:-https://github.com/PLeonLopes/wslforge}
+
+# bootstrap_remote ARGS...: under "curl ... | bash" there is no lib/ or
+# modules/ next to this script. Download the matching version and run the
+# real install.sh from it. Self-contained: lib/ is not available yet.
+#   -dev versions use the main branch, releases use the tag v<version>,
+#   and --ref <branch|tag> overrides both.
+bootstrap_remote() {
+  local ref='' args=() tmp
+  while (($#)); do
+    case $1 in
+      --ref) ref=${2:-}; shift ;;
+      --ref=*) ref=${1#*=} ;;
+      *) args+=("$1") ;;
+    esac
+    shift
+  done
+  if [[ -z $ref ]]; then
+    if [[ $WSLFORGE_VERSION == *-dev ]]; then ref=main; else ref="v$WSLFORGE_VERSION"; fi
+  fi
+  if ! command -v curl >/dev/null || ! command -v tar >/dev/null; then
+    echo 'ERROR: wslforge needs curl and tar.' >&2
+    exit 1
+  fi
+
+  tmp=$(mktemp -d)
+  echo "==> Downloading wslforge ($ref)..."
+  if ! curl -fsSL "$WSLFORGE_REPO_URL/archive/$ref.tar.gz" | tar -xz -C "$tmp" --strip-components=1; then
+    echo "ERROR: could not download wslforge from $WSLFORGE_REPO_URL ($ref)." >&2
+    rm -rf "$tmp"
+    exit 1
+  fi
+  # stdin is still the rest of the piped script: never let anything read it.
+  # (Menus and prompts use /dev/tty.)
+  WSLFORGE_CLEANUP_DIR=$tmp exec bash "$tmp/install.sh" "${args[@]}" </dev/null
+}
+
+if [[ -z ${BASH_SOURCE[0]:-} || ! -f $(dirname "${BASH_SOURCE[0]}")/lib/common.sh ]]; then
+  bootstrap_remote "$@"
+fi
+
 WSLFORGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODULES_DIR="$WSLFORGE_DIR/modules"
 
@@ -14,6 +55,8 @@ source "$WSLFORGE_DIR/lib/common.sh"
 source "$WSLFORGE_DIR/lib/distro.sh"
 # shellcheck source=lib/pkg.sh
 source "$WSLFORGE_DIR/lib/pkg.sh"
+# shellcheck source=lib/ui.sh
+source "$WSLFORGE_DIR/lib/ui.sh"
 
 # Settings. Precedence: command-line flags > config file > defaults.
 ACTION=install
@@ -22,12 +65,16 @@ ONLY=''
 SKIP_ARG=''
 MODULES=''    # comma-separated module ids; empty = modules enabled by default
 SKIP=''       # comma-separated module or tool ids to leave out
+PROFILE=''    # minimal | dev | full (empty = dev)
+PROFILE_ARG=''
+REF=''        # only used by bootstrap_remote
 # GIT_NAME and GIT_EMAIL are read by modules/git.sh.
 # shellcheck disable=SC2034
 GIT_NAME=''
 # shellcheck disable=SC2034
 GIT_EMAIL=''
-CONFIG_KEYS=(MODULES SKIP GIT_NAME GIT_EMAIL)
+CONFIG_KEYS=(PROFILE MODULES SKIP GIT_NAME GIT_EMAIL)
+PROFILES=(dev minimal full)
 
 # Runtime state.
 SKIP_LIST=()
@@ -37,28 +84,42 @@ FAILED=0
 RUN_DIR=''    # temporary files for this run (notes, package index marker)
 NOTES_FILE=''
 SUDO_KEEPALIVE_PID=''
+INTERACTIVE=0 # 1 = a terminal is available and --yes was not given
+LOG_FILE="$HOME/.wslforge/install.log"
+LOG_PID=''
+FOLLOW_ACTIONS=() # "label|command[|last]" offered at the end
+FOLLOW_REASONS=() # why a fresh shell is needed
+FOLLOW_GROUPS=()  # new groups the fresh shell should pick up
 
 usage() {
   cat <<EOF
 wslforge $WSLFORGE_VERSION: set up this WSL distro with common development tools.
 
 Usage: ./install.sh [options]
+       curl -fsSL https://raw.githubusercontent.com/PLeonLopes/wslforge/main/install.sh | bash
+
+Without options, an interactive menu asks what to install.
 
 Options:
   --list           List the available modules and whether they are installed
+  --profile NAME   Install a preset: dev (default), minimal or full
   --only LIST      Install only these modules (comma-separated, e.g. git,cli)
   --skip LIST      Leave out modules or single tools (e.g. --skip tmux,htop)
   --config FILE    Read settings from a wslforge.conf file
   --dry-run        Show what would be done without changing anything
-  -y, --yes        Never prompt (no confirmation, no questions)
+  -y, --yes        Never prompt: no menu, no questions, no confirmation
+  --ui NAME        Menu style: gum (default), whiptail or text
+  --ref REF        With curl | bash: install this branch or tag instead
   -h, --help       Show this help
   --version        Show the version
 
-Without --only (or MODULES in the config), the default modules are installed.
 The "base" module and the tools other modules depend on are always included.
+A log of each run is saved to ~/.wslforge/install.log.
 
 Examples:
+  ./install.sh                          # interactive menu
   ./install.sh --list                   # see every module and tool
+  ./install.sh --profile minimal -y     # essentials only, no questions
   ./install.sh --skip tmux,htop         # default modules, minus two tools
   ./install.sh --only cli --skip bat    # just the CLI tools, without bat
 EOF
@@ -86,6 +147,24 @@ parse_args() {
         shift
         ;;
       --config=*) CONFIG_FILE=${1#*=} ;;
+      --profile)
+        [[ $# -ge 2 ]] || die "--profile needs a value (${PROFILES[*]})"
+        PROFILE_ARG=$2
+        shift
+        ;;
+      --profile=*) PROFILE_ARG=${1#*=} ;;
+      --ui)
+        [[ $# -ge 2 ]] || die "--ui needs a value (gum, whiptail or text)"
+        WSLFORGE_UI=$2
+        shift
+        ;;
+      --ui=*) WSLFORGE_UI=${1#*=} ;;
+      --ref)
+        [[ $# -ge 2 ]] || die "--ref needs a branch or tag"
+        REF=$2
+        shift
+        ;;
+      --ref=*) REF=${1#*=} ;;
       --dry-run) DRY_RUN=1 ;;
       -y | --yes) ASSUME_YES=1 ;;
       -h | --help) usage; exit 0 ;;
@@ -225,9 +304,33 @@ module_ids() {
   done | sort -n | cut -d' ' -f2
 }
 
-# select_modules: fill SELECTED from MODULES (or the defaults), keeping order.
+# profile_includes PROFILE ID: true when the preset installs the module.
+profile_includes() {
+  if [[ $(module_field "$2" MODULE_REQUIRED) == yes ]]; then
+    return 0
+  fi
+  case $1 in
+    full) return 0 ;;
+    minimal) [[ $2 == git ]] ;;
+    *) [[ $(module_field "$2" MODULE_DEFAULT) == on ]] ;;
+  esac
+}
+
+# profile_list PROFILE: the preset's modules, space-separated.
+profile_list() {
+  local id list=()
+  while IFS= read -r id; do
+    if module_supported "$id" && profile_includes "$1" "$id"; then
+      list+=("$id")
+    fi
+  done < <(module_ids)
+  printf '%s' "${list[*]}"
+}
+
+# select_modules: fill SELECTED from MODULES (or the profile), keeping order.
 select_modules() {
   local all=() requested=() id
+  SELECTED=()
   mapfile -t all < <(module_ids)
 
   if [[ -n $MODULES ]]; then
@@ -246,7 +349,7 @@ select_modules() {
       if in_list "$id" "${requested[@]}"; then
         SELECTED+=("$id")
       fi
-    elif [[ $(module_field "$id" MODULE_DEFAULT) == on ]]; then
+    elif profile_includes "${PROFILE:-dev}" "$id"; then
       SELECTED+=("$id")
     fi
   done
@@ -317,6 +420,9 @@ run_module() {
     if declare -F notes >/dev/null; then
       notes >>"$NOTES_FILE"
     fi
+    if declare -F actions >/dev/null; then
+      actions >>"$RUN_DIR/actions"
+    fi
     exit "$status"
   )
   rc=$?
@@ -345,13 +451,13 @@ run_module() {
 # ---------------------------------------------------------------- output
 
 print_header() {
-  printf '%swslforge %s%s on %s (%s)\n' "$C_BOLD" "$WSLFORGE_VERSION" "$C_RESET" "$DISTRO_NAME" "$DISTRO_FAMILY"
+  printf '%swslforge%s %s on %s (%s)\n' "$C_BOLD$C_EMBER" "$C_RESET" "$WSLFORGE_VERSION" "$DISTRO_NAME" "$DISTRO_FAMILY"
 }
 
 # print_module_title ID: "id  Module name  [tag]"
 print_module_title() {
   printf '\n  %s%-6s%s %s  %s[%s]%s\n' "$C_BOLD" "$1" "$C_RESET" \
-    "$(module_field "$1" MODULE_NAME)" "$C_DIM" "$(module_tag "$1")" "$C_RESET"
+    "$(module_field "$1" MODULE_NAME)" "$C_ASH" "$(module_tag "$1")" "$C_RESET"
 }
 
 list_modules() {
@@ -360,13 +466,13 @@ list_modules() {
     print_module_title "$id"
     while IFS='|' read -r item state desc flags; do
       mark='·'
-      [[ $state == installed ]] && mark="$C_GREEN✔$C_RESET"
+      [[ $state == installed ]] && mark="$C_MOSS✔$C_RESET"
       extra=''
-      [[ $flags == *required* ]] && extra=" $C_DIM(required)$C_RESET"
+      [[ $flags == *required* ]] && extra=" $C_ASH(required)$C_RESET"
       printf '    %s %-16s %s%s\n' "$mark" "$item" "$desc" "$extra"
     done < <(module_items "$id")
   done < <(module_ids)
-  printf '\n  %s✔%s installed   · not installed\n' "$C_GREEN" "$C_RESET"
+  printf '\n  %s✔%s installed   · not installed\n' "$C_MOSS" "$C_RESET"
   printf '  Leave tools or modules out with --skip, e.g. ./install.sh --skip tmux,htop\n\n'
 }
 
@@ -385,14 +491,14 @@ print_plan() {
       case $state in
         installed) installed+=("$item") ;;
         skipped) skipped+=("$item") ;;
-        *) printf '      + %-16s %s\n' "$item" "$desc" ;;
+        *) printf '      %s+%s %-16s %s\n' "$C_EMBER" "$C_RESET" "$item" "$desc" ;;
       esac
     done < <(module_items "$id")
     if ((${#installed[@]})); then
-      printf '      %s↷ already installed: %s%s\n' "$C_DIM" "$(join_by ', ' "${installed[@]}")" "$C_RESET"
+      printf '      %s↷ already installed: %s%s\n' "$C_ASH" "$(join_by ', ' "${installed[@]}")" "$C_RESET"
     fi
     if ((${#skipped[@]})); then
-      printf '      %s- skipped: %s%s\n' "$C_DIM" "$(join_by ', ' "${skipped[@]}")" "$C_RESET"
+      printf '      %s- skipped: %s%s\n' "$C_ASH" "$(join_by ', ' "${skipped[@]}")" "$C_RESET"
     fi
   done
 
@@ -405,7 +511,7 @@ print_plan() {
     printf '\n  - skipped modules: %s\n' "$(join_by ', ' "${modules_skipped[@]}")"
   fi
 
-  printf '\n  + will be installed   ↷ already installed   - skipped\n'
+  printf '\n  %s+%s will be installed   ↷ already installed   - skipped\n' "$C_EMBER" "$C_RESET"
   printf '  See every module and tool with --list; leave some out with --skip.\n'
 }
 
@@ -415,7 +521,7 @@ print_summary() {
   for entry in "${RESULTS[@]}"; do
     IFS='|' read -r symbol id text <<<"$entry"
     case $symbol in
-      ✔) symbol="$C_GREEN$symbol$C_RESET" ;;
+      ✔) symbol="$C_MOSS$symbol$C_RESET" ;;
       ✖) symbol="$C_RED$symbol$C_RESET" ;;
     esac
     printf '    %s %-10s %s\n' "$symbol" "$id" "$text"
@@ -428,42 +534,267 @@ print_notes() {
   awk '!seen[$0]++ { printf "    %d. %s\n", ++n, $0 }' "$NOTES_FILE"
 }
 
+# ---------------------------------------------------------------- menu
+
+# interactive_menu: ask what to install (profile or tool by tool) and the git
+# identity, then fill PROFILE / MODULES / SKIP.
+interactive_menu() {
+  local choice
+  ui_init
+  ui_header "wslforge $WSLFORGE_VERSION" "Set up $DISTRO_NAME for development"
+  choice=$(ui_choose_one 'What would you like to install?' dev \
+    "dev|dev       Recommended: $(profile_list dev)" \
+    "minimal|minimal   Just the essentials: $(profile_list minimal)" \
+    "full|full      Everything available: $(profile_list full)" \
+    "custom|custom    Pick the tools one by one") || die 'Cancelled.'
+  [[ -n $choice ]] || die 'Cancelled.'
+
+  if [[ $choice == custom ]]; then
+    _menu_pick_tools
+  else
+    PROFILE=$choice
+  fi
+  select_modules
+  if in_list git "${SELECTED[@]}"; then
+    _menu_git_identity
+  fi
+}
+
+# _menu_pick_tools: one checklist with every optional tool. Modules with no
+# tool picked are left out; unpicked tools of the other modules are skipped.
+_menu_pick_tools() {
+  local id item state desc flags label on answer
+  local opts=() always=() picked=() modules=() skips=()
+  while IFS= read -r id; do
+    module_supported "$id" || continue
+    while IFS='|' read -r item state desc flags; do
+      if [[ $flags == *required* ]]; then
+        always+=("$item")
+        continue
+      fi
+      label=$(printf '%-7s %-12s %s' "$id" "$item" "$desc")
+      [[ $state == installed ]] && label+=' (installed)'
+      on=off
+      if profile_includes dev "$id"; then
+        on=on
+      fi
+      opts+=("$id:$item|$label|$on")
+    done < <(module_items "$id")
+  done < <(module_ids)
+
+  answer=$(ui_choose_many "Pick the tools to install. Always installed: $(join_by ', ' "${always[@]}")" "${opts[@]}") ||
+    die 'Cancelled.'
+  mapfile -t picked <<<"$answer"
+
+  while IFS= read -r id; do
+    module_supported "$id" || continue
+    local any=0 module_skips=()
+    while IFS='|' read -r item state desc flags; do
+      [[ $flags == *required* ]] && continue
+      if in_list "$id:$item" "${picked[@]}"; then
+        any=1
+      else
+        module_skips+=("$item")
+      fi
+    done < <(module_items "$id")
+    if ((any)) || [[ $(module_field "$id" MODULE_REQUIRED) == yes ]]; then
+      modules+=("$id")
+      skips+=("${module_skips[@]}")
+    fi
+  done < <(module_ids)
+
+  MODULES=$(join_by ',' "${modules[@]}")
+  SKIP=$(join_by ',' "${skips[@]}")
+  SKIP_LIST=("${skips[@]}")
+}
+
+_menu_git_identity() {
+  local name email
+  name=${GIT_NAME:-$(git config --global --get user.name 2>/dev/null || true)}
+  email=${GIT_EMAIL:-$(git config --global --get user.email 2>/dev/null || true)}
+  GIT_NAME=$(ui_input 'Git user name' "$name") || die 'Cancelled.'
+  GIT_EMAIL=$(ui_input 'Git email' "$email") || die 'Cancelled.'
+}
+
 # ---------------------------------------------------------------- sudo
 
-# start_sudo: ask for the sudo password once and keep it fresh during the run.
+# plan_needs_root: true when a selected module has something to install and
+# does not declare MODULE_ROOT=no (home-only installers).
+plan_needs_root() {
+  local id
+  for id in "${SELECTED[@]}"; do
+    module_supported "$id" || continue
+    [[ $(module_field "$id" MODULE_ROOT) == no ]] && continue
+    if module_items "$id" | grep -q '^[^|]*|missing|'; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# start_sudo: ask for the sudo password once, up front, and keep it fresh,
+# so the rest of the run needs no attention. Skipped when nothing needs root.
 start_sudo() {
   [[ $EUID -eq 0 || $DRY_RUN == 1 ]] && return 0
+  plan_needs_root || return 0
   has_cmd sudo || die "sudo is required (or run as root)."
   log_info "Some steps need administrator rights; sudo may ask for your password."
   sudo -v || die "Could not get sudo rights."
   (while kill -0 "$$" 2>/dev/null; do
     sudo -n true 2>/dev/null
     sleep 50
-  done) &
+  done) >/dev/null 2>&1 &
   SUDO_KEEPALIVE_PID=$!
 }
 
-# Invoked through "trap cleanup EXIT".
+# ---------------------------------------------------------------- log
+
+# start_log: copy everything printed from now on to ~/.wslforge/install.log
+# (without colors). Started after the menu, which needs the terminal.
+start_log() {
+  [[ $DRY_RUN == 1 ]] && return 0
+  mkdir -p "$(dirname "$LOG_FILE")"
+  exec 5>&1 6>&2
+  exec > >(tee >(sed -u -E 's/\x1b\[[0-9;]*[A-Za-z]//g' >>"$LOG_FILE")) 2>&1
+  LOG_PID=$!
+  printf '\n===== wslforge %s | %s | %s =====\nModules: %s\nSkipped: %s\n' \
+    "$WSLFORGE_VERSION" "$(date '+%Y-%m-%d %H:%M:%S')" "$DISTRO_NAME" \
+    "${SELECTED[*]}" "${SKIP_LIST[*]:-none}" >>"$LOG_FILE"
+}
+
+stop_log() {
+  [[ -n $LOG_PID ]] || return 0
+  exec 1>&5 2>&6 5>&- 6>&-
+  # Let tee flush the last lines, but never hang if something kept the pipe.
+  for _ in {1..50}; do
+    kill -0 "$LOG_PID" 2>/dev/null || break
+    sleep 0.1
+  done
+  LOG_PID=''
+}
+
+# ---------------------------------------------------------------- follow-ups
+
+# collect_followups: read the actions and fresh-shell reasons the modules
+# recorded. Without a terminal (or with --yes / --dry-run) they become notes.
+collect_followups() {
+  local reason group line label cmd
+  if [[ -s $RUN_DIR/actions ]]; then
+    mapfile -t FOLLOW_ACTIONS < <(awk '!seen[$0]++' "$RUN_DIR/actions")
+  fi
+  if [[ -s $RUN_DIR/new-shell ]]; then
+    while IFS='|' read -r reason group; do
+      in_list "$reason" "${FOLLOW_REASONS[@]}" || FOLLOW_REASONS+=("$reason")
+      if [[ -n $group ]] && ! in_list "$group" "${FOLLOW_GROUPS[@]}"; then
+        FOLLOW_GROUPS+=("$group")
+      fi
+    done <"$RUN_DIR/new-shell"
+  fi
+
+  if ((INTERACTIVE)) && [[ $DRY_RUN != 1 ]]; then
+    return 0
+  fi
+  for line in "${FOLLOW_ACTIONS[@]}"; do
+    IFS='|' read -r label cmd _ <<<"$line"
+    echo "$label: $cmd" >>"$NOTES_FILE"
+  done
+  if ((${#FOLLOW_REASONS[@]})); then
+    echo "Open a new terminal to use $(join_by ', ' "${FOLLOW_REASONS[@]}")." >>"$NOTES_FILE"
+  fi
+  FOLLOW_ACTIONS=()
+  FOLLOW_REASONS=()
+}
+
+# offer_followups: let the user run the actions now, then offer a fresh shell.
+offer_followups() {
+  local opts=() chosen=() answer n label cmd flag pass
+  ((${#FOLLOW_ACTIONS[@]} + ${#FOLLOW_REASONS[@]})) || return 0
+  ui_init
+
+  if ((${#FOLLOW_ACTIONS[@]})); then
+    for n in "${!FOLLOW_ACTIONS[@]}"; do
+      IFS='|' read -r label cmd flag <<<"${FOLLOW_ACTIONS[$n]}"
+      opts+=("$n|$label|on")
+    done
+    answer=$(ui_choose_many 'Finish setting up now? (unselected steps are listed for later)' "${opts[@]}") || answer=''
+    mapfile -t chosen <<<"$answer"
+
+    for n in "${!FOLLOW_ACTIONS[@]}"; do
+      IFS='|' read -r label cmd flag <<<"${FOLLOW_ACTIONS[$n]}"
+      in_list "$n" "${chosen[@]}" || log_info "Later: $label: $cmd"
+    done
+    # "last" actions (like restarting the distro) end the session.
+    for pass in normal last; do
+      for n in "${chosen[@]}"; do
+        [[ -n $n ]] || continue
+        IFS='|' read -r label cmd flag <<<"${FOLLOW_ACTIONS[$n]}"
+        [[ ${flag:-normal} == "$pass" ]] || continue
+        log_step "$label"
+        if ! bash -c "$cmd" </dev/tty >/dev/tty 2>&1; then
+          log_warn "That did not finish; run it later with: $cmd"
+        fi
+      done
+    done
+  fi
+
+  if ((${#FOLLOW_REASONS[@]})); then
+    if ui_confirm "Open a fresh shell now to use $(join_by ', ' "${FOLLOW_REASONS[@]}")?"; then
+      start_fresh_shell
+    fi
+    log_info "Open a new terminal to use $(join_by ', ' "${FOLLOW_REASONS[@]}")."
+  fi
+}
+
+# start_fresh_shell: replace this script with a login shell that has the new
+# PATH entries and groups. Typing "exit" returns to the previous shell.
+start_fresh_shell() {
+  local shell=${SHELL:-/bin/bash}
+  cleanup
+  trap - EXIT
+  log_info "Starting a fresh shell (type 'exit' to go back to the previous one)."
+  if ((${#FOLLOW_GROUPS[@]})) && has_cmd sg; then
+    exec sg "${FOLLOW_GROUPS[0]}" -c "exec $(printf '%q' "$shell") -l" </dev/tty >/dev/tty 2>&1
+  fi
+  exec "$shell" -l </dev/tty >/dev/tty 2>&1
+}
+
+# Invoked through "trap cleanup EXIT" (and before starting a fresh shell).
 # shellcheck disable=SC2317
 cleanup() {
+  stop_log
   [[ -n $SUDO_KEEPALIVE_PID ]] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null
   [[ -n $RUN_DIR ]] && rm -rf "$RUN_DIR"
+  # Remove the copy downloaded by bootstrap_remote (only if it is this one).
+  if [[ -n ${WSLFORGE_CLEANUP_DIR:-} && $WSLFORGE_CLEANUP_DIR == "$WSLFORGE_DIR" ]]; then
+    rm -rf "$WSLFORGE_CLEANUP_DIR"
+  fi
   return 0
 }
 
 # ---------------------------------------------------------------- main
 
 main() {
+  trap cleanup EXIT
   parse_args "$@"
   [[ -n $CONFIG_FILE ]] && load_config "$CONFIG_FILE"
   [[ -n $ONLY ]] && MODULES=$ONLY
   [[ -n $SKIP_ARG ]] && SKIP=$SKIP_ARG
+  [[ -n $PROFILE_ARG ]] && PROFILE=$PROFILE_ARG
+  if [[ -n $PROFILE ]] && ! in_list "$PROFILE" "${PROFILES[@]}"; then
+    die "Unknown profile: $PROFILE (use ${PROFILES[*]})"
+  fi
   if [[ -n $SKIP ]]; then
     IFS=',' read -ra SKIP_LIST <<<"${SKIP// /}"
+  fi
+  if [[ $ASSUME_YES != 1 ]] && has_tty; then
+    INTERACTIVE=1
   fi
 
   detect_distro
   print_header
+  if [[ -n $REF ]]; then
+    log_warn "--ref only applies to curl | bash; using the local files."
+  fi
 
   if [[ $ACTION == list ]]; then
     list_modules
@@ -474,21 +805,28 @@ main() {
   pkg_require_supported
   is_wsl || log_warn "This does not look like WSL; continuing anyway."
 
+  # The menu shows up when nothing was chosen through flags or a config file.
+  if ((INTERACTIVE)) && [[ -z $ONLY$SKIP_ARG$PROFILE_ARG$CONFIG_FILE ]]; then
+    interactive_menu
+  fi
+
   select_modules
   print_plan
 
   echo
   if [[ $DRY_RUN == 1 ]]; then
     log_info "Dry run: nothing will be changed."
+  elif [[ -n $UI_BACKEND ]]; then
+    ui_confirm 'Install now?' || die 'Cancelled.'
   else
     confirm "Proceed?" || die "Aborted. Use --yes to run without prompts."
   fi
 
-  trap cleanup EXIT
   RUN_DIR=$(mktemp -d)
   NOTES_FILE="$RUN_DIR/notes"
   touch "$NOTES_FILE"
   start_sudo
+  start_log
 
   local id
   for id in "${SELECTED[@]}"; do
@@ -496,8 +834,17 @@ main() {
   done
 
   print_summary
+  collect_followups
   print_notes
+  if [[ -n $LOG_PID ]]; then
+    log_info "Full log: $LOG_FILE"
+  fi
   echo
+  stop_log
+
+  if ((INTERACTIVE)) && [[ $DRY_RUN != 1 ]]; then
+    offer_followups
+  fi
   ((FAILED == 0))
 }
 

@@ -1,11 +1,27 @@
 # shellcheck shell=bash
 # Shared helpers: logging, prompts, and command execution with dry-run support.
 
-if [[ -t 1 ]]; then
-  C_RESET=$'\033[0m' C_BOLD=$'\033[1m' C_DIM=$'\033[2m'
-  C_RED=$'\033[31m' C_GREEN=$'\033[32m' C_YELLOW=$'\033[33m' C_BLUE=$'\033[34m'
+# Forge: wslforge's visual identity. Every color in the UI comes from here.
+#   ember     accent: cursor, selection, borders, "+" marks
+#   amber     headings and step titles
+#   ash       secondary text and hints
+#   text      body text on dark backgrounds
+#   moss      success
+#   charcoal  text on ember buttons
+#   iron      inactive buttons
+# Hex values feed gum (it adapts them to the terminal); the C_* codes below
+# are their closest 256-color ANSI matches for plain output.
+# shellcheck disable=SC2034  # the hex values are read by lib/ui.sh
+FORGE_EMBER='#FF8A3D' FORGE_AMBER='#FFC857' FORGE_ASH='#8A817A' \
+  FORGE_TEXT='#E8E2DA' FORGE_MOSS='#9CCC65' FORGE_CHARCOAL='#1A1410' FORGE_IRON='#2B2622'
+
+# Colors only on a terminal, and never when NO_COLOR is set (no-color.org).
+if [[ -t 1 && -z ${NO_COLOR:-} ]]; then
+  C_RESET=$'\033[0m' C_BOLD=$'\033[1m'
+  C_EMBER=$'\033[38;5;209m' C_AMBER=$'\033[38;5;221m' C_ASH=$'\033[38;5;245m'
+  C_MOSS=$'\033[38;5;149m' C_RED=$'\033[38;5;203m'
 else
-  C_RESET='' C_BOLD='' C_DIM='' C_RED='' C_GREEN='' C_YELLOW='' C_BLUE=''
+  C_RESET='' C_BOLD='' C_EMBER='' C_AMBER='' C_ASH='' C_MOSS='' C_RED=''
 fi
 
 DRY_RUN=0     # 1 = only print commands that would change the system
@@ -13,10 +29,10 @@ ASSUME_YES=0  # 1 = never prompt; use defaults and skip confirmations
 
 # ---------------------------------------------------------------- logging
 
-log_step()  { printf '\n%s==> %s%s\n' "$C_BOLD$C_BLUE" "$*" "$C_RESET"; }
+log_step()  { printf '\n%s==> %s%s\n' "$C_BOLD$C_AMBER" "$*" "$C_RESET"; }
 log_info()  { printf '    %s\n' "$*"; }
-log_ok()    { printf '    %s✔%s %s\n' "$C_GREEN" "$C_RESET" "$*"; }
-log_warn()  { printf '    %s!%s %s\n' "$C_YELLOW" "$C_RESET" "$*" >&2; }
+log_ok()    { printf '    %s✔%s %s\n' "$C_MOSS" "$C_RESET" "$*"; }
+log_warn()  { printf '    %s!%s %s\n' "$C_EMBER" "$C_RESET" "$*" >&2; }
 log_error() { printf '%sERROR:%s %s\n' "$C_RED" "$C_RESET" "$*" >&2; }
 die()       { log_error "$*"; exit 1; }
 
@@ -49,7 +65,7 @@ join_by() {
 
 # ---------------------------------------------------------------- execution
 
-_print_dry() { printf '    %s[dry-run]%s %s\n' "$C_DIM" "$C_RESET" "$*"; }
+_print_dry() { printf '    %s[dry-run]%s %s\n' "$C_ASH" "$C_RESET" "$*"; }
 
 # run CMD...: execute a command, or only print it in dry-run mode.
 run() {
@@ -112,6 +128,14 @@ run_installer() {
   fi
   rm -f "$tmp"
   return "$rc"
+}
+
+# need_new_shell REASON [GROUP]: record that the user needs a fresh shell
+# (e.g. new PATH entries or a new group). install.sh offers one at the end
+# instead of every module printing its own "open a new terminal" note.
+need_new_shell() {
+  [[ -n ${RUN_DIR:-} ]] || return 0
+  printf '%s|%s\n' "$1" "${2:-}" >>"$RUN_DIR/new-shell"
 }
 
 # ---------------------------------------------------------------- ini files

@@ -58,16 +58,24 @@ do_install() {
 }
 
 notes() {
-  if is_wsl && ! _systemd_running; then
-    echo 'Restart WSL to start systemd (needed by Docker): run "wsl --shutdown" in Windows PowerShell, then reopen this terminal.'
-  fi
   if [[ $EUID -ne 0 ]] && ! id -nG | grep -qw docker; then
-    echo 'Open a new terminal (or run "newgrp docker") to use docker without sudo.'
+    need_new_shell 'docker without sudo' docker
   fi
   # Docker Desktop mounts this directory in distros where its WSL integration
   # is on. (A docker.exe shim from the Windows PATH alone is harmless:
   # /usr/bin/docker comes first on the PATH.)
   if [[ -d /mnt/wsl/docker-desktop ]]; then
     echo 'Docker Desktop integration is also enabled for this distro; turn it off in Docker Desktop > Settings > Resources > WSL integration to use the engine installed here.'
+  fi
+}
+
+# systemd only starts after the distro restarts. "last": it closes this
+# terminal, so it runs after every other action.
+actions() {
+  local wsl
+  if is_wsl && ! _systemd_running; then
+    wsl=$(command -v wsl.exe || echo /mnt/c/Windows/System32/wsl.exe)
+    printf 'Restart this distro to start systemd for Docker (closes this terminal)|%q --terminate %q|last\n' \
+      "$wsl" "${WSL_DISTRO_NAME:-}"
   fi
 }
