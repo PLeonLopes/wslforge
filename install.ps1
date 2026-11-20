@@ -27,6 +27,10 @@ Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+# Functions read the parameters from here. Script parameters used only inside
+# functions look unused to PSScriptAnalyzer (PSReviewUnusedParameter).
+$RunOptions = @{ Yes = [bool]$Yes; Ui = $Ui; OutFile = $OutFile; Help = [bool]$Help }
+
 $WslforgeVersion = '0.2.0-dev'
 $GumVersion = '2.0.2'
 $StateDir = Join-Path $HOME '.wslforge'
@@ -179,7 +183,7 @@ function Use-ForgeTheme {
 
 # Initialize-Ui: gum for a real console, plain prompts otherwise.
 function Initialize-Ui {
-    if ($Ui -eq 'text' -or [Console]::IsInputRedirected -or [Console]::IsOutputRedirected) { return }
+    if ($RunOptions.Ui -eq 'text' -or [Console]::IsInputRedirected -or [Console]::IsOutputRedirected) { return }
     $gum = Get-Gum
     if ($gum) {
         $UiState.Gum = $gum
@@ -386,7 +390,7 @@ function Read-Questionnaire {
         User     = Get-SuggestedUser
     }
 
-    if ($Yes) {
+    if ($RunOptions.Yes) {
         $name = Get-FreeName $defaults.Distro $taken
         return [ordered]@{
             Distro   = $defaults.Distro
@@ -509,22 +513,22 @@ function Save-Config($Answers, [string]$Path) {
 # ---------------------------------------------------------------- main
 
 function Invoke-Main {
-    if ($Help) {
+    if ($RunOptions.Help) {
         Show-Usage
         return 0
     }
-    $configPath = $OutFile
+    $configPath = $RunOptions.OutFile
     if (-not $configPath) { $configPath = Join-Path $StateDir 'wslforge.conf' }
     $configPath = [IO.Path]::GetFullPath($configPath)
 
-    if (-not $Yes) { Initialize-Ui }
+    if (-not $RunOptions.Yes) { Initialize-Ui }
     Show-Banner "wslforge $WslforgeVersion" 'Set up WSL for development on this PC'
 
     $answers = Read-Questionnaire
     $wslReady = Test-WslReady
     Show-Summary $answers $wslReady
 
-    if (-not $Yes) {
+    if (-not $RunOptions.Yes) {
         Write-Host ''
         if (-not (Confirm-Answer 'Save these answers?')) {
             Write-Note 'Nothing was saved.'
