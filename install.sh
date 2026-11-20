@@ -74,6 +74,8 @@ GIT_NAME=''
 # shellcheck disable=SC2034
 GIT_EMAIL=''
 CONFIG_KEYS=(PROFILE MODULES SKIP GIT_NAME GIT_EMAIL)
+# Keys written by install.ps1 for the Windows side; ignored here.
+WINDOWS_KEYS=(WSL_DISTRO WSL_NAME WSL_LOCATION WSL_USER WSL_MEMORY_GB WSL_CPUS)
 PROFILES=(dev minimal full)
 
 # Runtime state.
@@ -194,6 +196,8 @@ load_config() {
     fi
     if in_list "$key" "${CONFIG_KEYS[@]}"; then
       printf -v "$key" '%s' "$value"
+    elif in_list "$key" "${WINDOWS_KEYS[@]}"; then
+      continue
     else
       log_warn "Ignoring unknown config key: $key"
     fi
