@@ -41,3 +41,21 @@ jobs:
             echo "::error::The second run tried to install something again."
             exit 1
           fi
+
+  remote:
+    name: Run through curl | bash
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Piping the script (no lib/ next to it) must download this exact
+      # commit and run from there.
+      - name: Piped install.sh downloads the repository
+        env:
+          REF: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -o pipefail
+          cd "$RUNNER_TEMP"
+          bash -s -- --list --ref "$REF" <"$GITHUB_WORKSPACE/install.sh" | tee remote.log
+          grep -q 'Downloading wslforge' remote.log
+          grep -q 'Claude Code' remote.log
