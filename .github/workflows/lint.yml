@@ -47,7 +47,7 @@ jobs:
           if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
             Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
           }
-          $results = $files | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Warning, Error }
+          $results = $files | ForEach-Object { Invoke-ScriptAnalyzer -Path $_ -Severity Warning, Error -Settings ./PSScriptAnalyzerSettings.psd1 }
           if ($results) {
             $results | Format-Table -AutoSize
             exit 1
