@@ -59,3 +59,22 @@ jobs:
           bash -s -- --list --ref "$REF" <"$GITHUB_WORKSPACE/install.sh" | tee remote.log
           grep -q 'Downloading wslforge' remote.log
           grep -q 'Claude Code' remote.log
+
+  windows:
+    name: Windows questionnaire (-Yes)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Windows PowerShell 5.1, the version every Windows ships with.
+      - name: install.ps1 -Yes writes a wslforge.conf
+        shell: powershell
+        run: |
+          $conf = Join-Path $env:RUNNER_TEMP 'wslforge.conf'
+          .\install.ps1 -Yes -OutFile $conf
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited with $LASTEXITCODE" }
+          $lines = Get-Content $conf
+          foreach ($key in 'WSL_DISTRO', 'WSL_NAME', 'WSL_LOCATION', 'WSL_USER', 'WSL_MEMORY_GB', 'WSL_CPUS', 'PROFILE') {
+            if (-not ($lines -match "^$key=")) { throw "Missing $key in the generated config" }
+          }
+          $lines
