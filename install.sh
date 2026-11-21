@@ -68,6 +68,10 @@ SKIP=''       # comma-separated module or tool ids to leave out
 PROFILE=''    # minimal | dev | full (empty = dev)
 PROFILE_ARG=''
 REF=''        # only used by bootstrap_remote
+FROM_WINDOWS=0  # 1 = started by install.ps1 (answers already confirmed there)
+# install.ps1 grants passwordless sudo through this file while the installer
+# runs, so nobody has to type a password; it is removed when the run ends.
+WINDOWS_SUDOERS=/etc/sudoers.d/wslforge-setup
 # GIT_NAME and GIT_EMAIL are read by modules/git.sh.
 # shellcheck disable=SC2034
 GIT_NAME=''
@@ -112,6 +116,7 @@ Options:
   -y, --yes        Never prompt: no menu, no questions, no confirmation
   --ui NAME        Menu style: gum (default), whiptail or text
   --ref REF        With curl | bash: install this branch or tag instead
+  --from-windows   Used by install.ps1: the answers were confirmed on Windows
   -h, --help       Show this help
   --version        Show the version
 
@@ -167,6 +172,7 @@ parse_args() {
         shift
         ;;
       --ref=*) REF=${1#*=} ;;
+      --from-windows) FROM_WINDOWS=1 ;;
       --dry-run) DRY_RUN=1 ;;
       -y | --yes) ASSUME_YES=1 ;;
       -h | --help) usage; exit 0 ;;
@@ -768,6 +774,10 @@ cleanup() {
   stop_log
   [[ -n $SUDO_KEEPALIVE_PID ]] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null
   [[ -n $RUN_DIR ]] && rm -rf "$RUN_DIR"
+  # Drop install.ps1's temporary passwordless sudo before handing over a shell.
+  if [[ $FROM_WINDOWS == 1 && -e $WINDOWS_SUDOERS ]]; then
+    sudo -n rm -f "$WINDOWS_SUDOERS" 2>/dev/null
+  fi
   # Remove the copy downloaded by bootstrap_remote (only if it is this one).
   if [[ -n ${WSLFORGE_CLEANUP_DIR:-} && $WSLFORGE_CLEANUP_DIR == "$WSLFORGE_DIR" ]]; then
     rm -rf "$WSLFORGE_CLEANUP_DIR"
@@ -820,6 +830,8 @@ main() {
   echo
   if [[ $DRY_RUN == 1 ]]; then
     log_info "Dry run: nothing will be changed."
+  elif [[ $FROM_WINDOWS == 1 ]]; then
+    : # already confirmed in install.ps1
   elif [[ -n $UI_BACKEND ]]; then
     ui_confirm 'Install now?' || die 'Cancelled.'
   else
