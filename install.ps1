@@ -59,13 +59,15 @@ $RawUrl = 'https://raw.githubusercontent.com/PLeonLopes/wslforge'
 $MinWslVersion = [version]'2.4.4'
 $WslConfigPath = Join-Path $HOME '.wslconfig'
 
-# Families install.sh supports today (apt). Others arrive in Phase 4.
-$SupportedFamilies = @('Ubuntu', 'Debian', 'kali')
+# Families of Microsoft's distro list that install.sh supports (apt, dnf and
+# pacman based).
+$SupportedFamilies = @('Ubuntu', 'Debian', 'kali', 'Fedora', 'AlmaLinux', 'archlinux')
 $FallbackDistros = @(
     [pscustomobject]@{ Name = 'Ubuntu'; FriendlyName = 'Ubuntu' }
     [pscustomobject]@{ Name = 'Ubuntu-24.04'; FriendlyName = 'Ubuntu 24.04 LTS' }
     [pscustomobject]@{ Name = 'Debian'; FriendlyName = 'Debian GNU/Linux' }
     [pscustomobject]@{ Name = 'kali-linux'; FriendlyName = 'Kali Linux Rolling' }
+    [pscustomobject]@{ Name = 'archlinux'; FriendlyName = 'Arch Linux' }
 )
 
 # ---------------------------------------------------------------- Forge palette
@@ -263,10 +265,11 @@ function Read-Choice([string]$Title, [string]$Default, [object[]]$Options) {
     Write-Host ''
     Write-Host "$($C.Amber)$Title$($C.Reset)"
     for ($i = 0; $i -lt $Options.Count; $i++) {
-        Write-Host ('  {0}) {1}' -f ($i + 1), $Options[$i].Label)
+        Write-Host ('  {0,2}) {1}' -f ($i + 1), $Options[$i].Label)
     }
     while ($true) {
         $reply = Read-Host "  Choose [default: $Default]"
+        if ($null -eq $reply) { throw 'The input ended before every question was answered.' }
         if (-not $reply) { return $Default }
         $number = 0
         if ([int]::TryParse($reply, [ref]$number) -and $number -ge 1 -and $number -le $Options.Count) {
@@ -290,7 +293,9 @@ function Read-Text([string]$Prompt, [string]$Default, [scriptblock]$Validate = $
         else {
             $hint = ''
             if ($Default) { $hint = " [$Default]" }
-            $value = (Read-Host "  $Prompt$hint").Trim()
+            $line = Read-Host "  $Prompt$hint"
+            if ($null -eq $line) { throw 'The input ended before every question was answered.' }
+            $value = $line.Trim()
         }
         if (-not $value) { $value = $Default }
         if ($Validate) {
@@ -523,10 +528,11 @@ function Read-Questionnaire {
     }
 
     $answers = [ordered]@{}
+    $width = ($catalog | ForEach-Object { $_.Name.Length } | Measure-Object -Maximum).Maximum + 1
     $distroOptions = @($catalog | ForEach-Object {
-            [pscustomobject]@{ Key = $_.Name; Label = ('{0,-14} {1}' -f $_.Name, $_.FriendlyName) }
+            [pscustomobject]@{ Key = $_.Name; Label = ("{0,-$width} {1}" -f $_.Name, $_.FriendlyName) }
         })
-    $answers.Distro = Read-Choice 'Which Linux distribution? (Fedora, Arch and others come later)' $defaults.Distro $distroOptions
+    $answers.Distro = Read-Choice 'Which Linux distribution?' $defaults.Distro $distroOptions
 
     $answers.Name = Read-Text 'Name for the new distro' (Get-FreeName $answers.Distro $taken) {
         param($value)
@@ -904,14 +910,35 @@ export DEBIAN_FRONTEND=noninteractive
 # sudo and curl: install.sh needs both, and minimal images may lack them.
 missing=''
 command -v sudo >/dev/null 2>&1 || missing="$missing sudo"
-command -v curl >/dev/null 2>&1 || missing="$missing curl ca-certificates"
+command -v curl >/dev/null 2>&1 || missing="$missing curl"
+command -v useradd >/dev/null 2>&1 || missing="$missing shadow"
+command -v awk >/dev/null 2>&1 || missing="$missing gawk"
 if [ -n "$missing" ]; then
+  echo "Installing:$missing"
+  # quiet RUN...: run a command, showing its output only when it fails.
+  quiet() {
+    "$@" >/tmp/wslforge-setup.log 2>&1 || { cat /tmp/wslforge-setup.log >&2; return 1; }
+  }
   if command -v apt-get >/dev/null 2>&1; then
-    apt-get update -qq && apt-get install -y -qq $missing >/dev/null
+    missing=$(echo "$missing" | sed 's/shadow/passwd/')
+    quiet apt-get update
+    quiet apt-get install -y $missing ca-certificates
+  elif command -v dnf >/dev/null 2>&1; then
+    missing=$(echo "$missing" | sed 's/shadow/shadow-utils/')
+    quiet dnf install -y $missing
+  elif command -v pacman >/dev/null 2>&1; then
+    # A fresh Arch has no pacman keyring yet; partial upgrades are not
+    # supported, so this is a full upgrade.
+    if ! pacman-key --list-keys >/dev/null 2>&1; then
+      quiet pacman-key --init
+      quiet pacman-key --populate
+    fi
+    quiet pacman -Syu --noconfirm --needed $missing
   else
     echo "Please install:$missing" >&2
     exit 1
   fi
+  rm -f /tmp/wslforge-setup.log
 fi
 
 # UID 1000 when free: the distro's first-run setup then sees the user and
@@ -923,9 +950,16 @@ if ! id -u "$user" >/dev/null 2>&1; then
     useradd -m -s /bin/bash -u 1000 "$user"
   fi
 fi
-for group in sudo adm cdrom dip plugdev; do
+for group in sudo wheel adm cdrom dip plugdev; do
   if getent group "$group" >/dev/null; then usermod -aG "$group" "$user"; fi
 done
+# Outside the Debian family there is no "sudo" group, and the default rules
+# vary (Arch has none enabled). Give the user sudo with their own password.
+# (Sorts before wslforge-setup below.)
+if ! getent group sudo >/dev/null; then
+  printf '%s ALL=(ALL:ALL) ALL\n' "$user" > /etc/sudoers.d/10-wslforge-user
+  chmod 440 /etc/sudoers.d/10-wslforge-user
+fi
 chpasswd <<'__MARKER__'
 __USER__:__PASSWORD__
 __MARKER__
