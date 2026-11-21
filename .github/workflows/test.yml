@@ -61,20 +61,31 @@ jobs:
           grep -q 'Claude Code' remote.log
 
   windows:
-    name: Windows questionnaire (-Yes)
+    name: Windows questionnaire (-Yes -ConfigOnly)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
 
-      # Windows PowerShell 5.1, the version every Windows ships with.
-      - name: install.ps1 -Yes writes a wslforge.conf
+      # Windows PowerShell 5.1, the version every Windows ships with. The
+      # runner cannot create WSL distros, so only the answers are tested.
+      - name: install.ps1 -Yes -ConfigOnly writes a wslforge.conf
         shell: powershell
         run: |
           $conf = Join-Path $env:RUNNER_TEMP 'wslforge.conf'
-          .\install.ps1 -Yes -OutFile $conf
+          .\install.ps1 -Yes -ConfigOnly -Config $conf
           if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited with $LASTEXITCODE" }
           $lines = Get-Content $conf
           foreach ($key in 'WSL_DISTRO', 'WSL_NAME', 'WSL_LOCATION', 'WSL_USER', 'WSL_MEMORY_GB', 'WSL_CPUS', 'PROFILE') {
             if (-not ($lines -match "^$key=")) { throw "Missing $key in the generated config" }
           }
           $lines
+
+      - name: install.ps1 -Resume reads the saved answers back
+        shell: powershell
+        run: |
+          $conf = Join-Path $env:RUNNER_TEMP 'wslforge.conf'
+          $before = Get-Content $conf | Where-Object { $_ -notmatch '^#' }
+          .\install.ps1 -Yes -ConfigOnly -Resume -Config $conf
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited with $LASTEXITCODE" }
+          $after = Get-Content $conf | Where-Object { $_ -notmatch '^#' }
+          if (Compare-Object $before $after) { throw 'The answers changed after -Resume' }
