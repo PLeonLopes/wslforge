@@ -3,6 +3,7 @@
 
 MODULE_NAME='Claude Code'
 MODULE_ORDER=70
+MODULE_GROUP='AI'
 MODULE_DEFAULT=on
 MODULE_FAMILIES='apt dnf pacman'
 MODULE_ROOT=no      # installs into the home directory only

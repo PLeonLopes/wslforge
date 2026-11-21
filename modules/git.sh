@@ -3,6 +3,7 @@
 
 MODULE_NAME='Git + GitHub CLI'
 MODULE_ORDER=30
+MODULE_GROUP='Essentials'
 MODULE_DEFAULT=on
 MODULE_FAMILIES='apt dnf pacman'
 

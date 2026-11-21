@@ -3,6 +3,7 @@
 
 MODULE_NAME='Docker Engine'
 MODULE_ORDER=60
+MODULE_GROUP='Containers & Cloud'
 MODULE_DEFAULT=on
 MODULE_FAMILIES='apt dnf pacman'
 
