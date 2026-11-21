@@ -4,22 +4,30 @@
 MODULE_NAME='Docker Engine'
 MODULE_ORDER=60
 MODULE_DEFAULT=on
-MODULE_FAMILIES='apt'
+MODULE_FAMILIES='apt dnf pacman'
 
 MODULE_ITEMS=(
   'docker|Docker Engine with Compose and Buildx, running inside WSL'
 )
 
-DOCKER_PACKAGES=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin)
+# Docker's own packages where it publishes them (Ubuntu, Debian, Fedora, RHEL
+# rebuilds); Arch packages Docker itself.
+case $DISTRO_FAMILY in
+  pacman) DOCKER_PACKAGES=(docker docker-buildx docker-compose) ;;
+  *) DOCKER_PACKAGES=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin) ;;
+esac
 DOCKER_USER=${USER:-$(id -un)}
 
 _systemd_running() {
   [[ -d /run/systemd/system ]]
 }
 
-# Docker's repository only has ubuntu and debian trees.
+# _docker_repo_distro: the tree of Docker's repository for this distro.
 _docker_repo_distro() {
-  if [[ $DISTRO_ID == ubuntu ]]; then echo ubuntu; else echo debian; fi
+  case $DISTRO_ID in
+    ubuntu | fedora) echo "$DISTRO_ID" ;;
+    *) if [[ $DISTRO_FAMILY == dnf ]]; then echo centos; else echo debian; fi ;;
+  esac
 }
 
 # Checks packages, not the "docker" command: Docker Desktop's WSL integration
@@ -37,9 +45,14 @@ is_installed() {
 do_install() {
   local distro
   distro=$(_docker_repo_distro)
-  apt_add_repo docker \
-    "https://download.docker.com/linux/$distro/gpg" \
-    "https://download.docker.com/linux/$distro $DISTRO_CODENAME stable"
+  case $DISTRO_FAMILY in
+    apt)
+      apt_add_repo docker \
+        "https://download.docker.com/linux/$distro/gpg" \
+        "https://download.docker.com/linux/$distro $DISTRO_CODENAME stable"
+      ;;
+    dnf) rpm_add_repo docker-ce "https://download.docker.com/linux/$distro/docker-ce.repo" ;;
+  esac
   pkg_install "${DOCKER_PACKAGES[@]}"
 
   # Run docker without sudo (takes effect in a new login shell).

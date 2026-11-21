@@ -225,7 +225,8 @@ module_field() {
 }
 
 # module_items ID: print one "item|state|description|flags" line per tool,
-# where state is "installed", "missing" or "skipped".
+# where state is "installed", "missing", "skipped" or "unavailable" (no
+# package for it on this distro).
 module_items() {
   (
     # shellcheck disable=SC1090
@@ -238,6 +239,8 @@ module_items() {
       IFS='|' read -r item desc flags <<<"$entry"
       if item_skipped "$item"; then
         state=skipped
+      elif ((supported)) && ! item_available "$item"; then
+        state=unavailable
       elif ((supported)) && is_installed "$item" >/dev/null 2>&1; then
         state=installed
       else
@@ -259,6 +262,14 @@ module_item_flags() {
       printf '%s|%s\n' "$item" "$flags"
     done
   )
+}
+
+# item_available ITEM: modules may define is_available ITEM for tools that
+# some distros do not package. Call only with the module sourced.
+item_available() {
+  if declare -F is_available >/dev/null; then
+    is_available "$1"
+  fi
 }
 
 item_skipped() {
@@ -385,11 +396,13 @@ run_module() {
     set -euo pipefail
     # shellcheck disable=SC1090
     source "$MODULES_DIR/$id.sh"
-    entry='' item='' missing=() failed=() skipped=() status=0
+    entry='' item='' missing=() failed=() skipped=() unavailable=() status=0
     for entry in "${MODULE_ITEMS[@]}"; do
       item=${entry%%|*}
       if item_skipped "$item"; then
         skipped+=("$item")
+      elif ! item_available "$item"; then
+        unavailable+=("$item")
       elif ! is_installed "$item" >/dev/null 2>&1; then
         missing+=("$item")
       fi
@@ -399,9 +412,13 @@ run_module() {
       suffix=" (skipped: $(join_by ', ' "${skipped[@]}"))"
       log_info "- Skipping: $(join_by ', ' "${skipped[@]}")"
     fi
+    if ((${#unavailable[@]})); then
+      suffix+=" (unavailable on $DISTRO_ID: $(join_by ', ' "${unavailable[@]}"))"
+      log_info "○ Not packaged for $DISTRO_ID: $(join_by ', ' "${unavailable[@]}")"
+    fi
 
-    if ((${#skipped[@]} == ${#MODULE_ITEMS[@]})); then
-      echo "skipped" >"$result_file"
+    if ((${#skipped[@]} + ${#unavailable[@]} == ${#MODULE_ITEMS[@]})); then
+      echo "skipped$suffix" >"$result_file"
       exit 11
     elif ((${#missing[@]} == 0)); then
       log_info "↷ Already installed"
@@ -449,7 +466,7 @@ run_module() {
       fi
       ;;
     10) RESULTS+=("↷|$id|$text") ;;
-    11) RESULTS+=("-|$id|skipped (all tools)") ;;
+    11) RESULTS+=("-|$id|${text:-skipped}") ;;
     *)
       log_error "Module '$id' failed (exit code $rc)."
       RESULTS+=("✖|$id|${text:-failed}")
@@ -479,15 +496,19 @@ list_modules() {
       [[ $state == installed ]] && mark="$C_MOSS✔$C_RESET"
       extra=''
       [[ $flags == *required* ]] && extra=" $C_ASH(required)$C_RESET"
+      if [[ $state == unavailable ]]; then
+        mark="$C_ASH○$C_RESET"
+        extra=" $C_ASH(unavailable on $DISTRO_ID)$C_RESET"
+      fi
       printf '    %s %-16s %s%s\n' "$mark" "$item" "$desc" "$extra"
     done < <(module_items "$id")
   done < <(module_ids)
-  printf '\n  %s✔%s installed   · not installed\n' "$C_MOSS" "$C_RESET"
+  printf '\n  %s✔%s installed   · not installed   ○ unavailable on this distro\n' "$C_MOSS" "$C_RESET"
   printf '  Leave tools or modules out with --skip, e.g. ./install.sh --skip tmux,htop\n\n'
 }
 
 print_plan() {
-  local id item state desc flags installed skipped modules_skipped=()
+  local id item state desc flags installed skipped unavailable modules_skipped=()
   log_step "Plan"
   for id in "${SELECTED[@]}"; do
     print_module_title "$id"
@@ -497,10 +518,12 @@ print_plan() {
     fi
     installed=()
     skipped=()
+    unavailable=()
     while IFS='|' read -r item state desc flags; do
       case $state in
         installed) installed+=("$item") ;;
         skipped) skipped+=("$item") ;;
+        unavailable) unavailable+=("$item") ;;
         *) printf '      %s+%s %-16s %s\n' "$C_EMBER" "$C_RESET" "$item" "$desc" ;;
       esac
     done < <(module_items "$id")
@@ -509,6 +532,9 @@ print_plan() {
     fi
     if ((${#skipped[@]})); then
       printf '      %s- skipped: %s%s\n' "$C_ASH" "$(join_by ', ' "${skipped[@]}")" "$C_RESET"
+    fi
+    if ((${#unavailable[@]})); then
+      printf '      %s○ unavailable on %s: %s%s\n' "$C_ASH" "$DISTRO_ID" "$(join_by ', ' "${unavailable[@]}")" "$C_RESET"
     fi
   done
 
@@ -578,6 +604,7 @@ _menu_pick_tools() {
   while IFS= read -r id; do
     module_supported "$id" || continue
     while IFS='|' read -r item state desc flags; do
+      [[ $state == unavailable ]] && continue
       if [[ $flags == *required* ]]; then
         always+=("$item")
         continue
@@ -600,7 +627,7 @@ _menu_pick_tools() {
     module_supported "$id" || continue
     local any=0 module_skips=()
     while IFS='|' read -r item state desc flags; do
-      [[ $flags == *required* ]] && continue
+      [[ $flags == *required* || $state == unavailable ]] && continue
       if in_list "$id:$item" "${picked[@]}"; then
         any=1
       else
