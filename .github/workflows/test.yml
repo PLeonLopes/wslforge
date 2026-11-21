@@ -5,9 +5,10 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  # Weekly, to catch distro or upstream changes that break an install.
+  # Monthly (and on demand), every profile everywhere: catches distro or
+  # upstream changes that break an install.
   schedule:
-    - cron: '0 6 * * 1'
+    - cron: '0 6 1 * *'
 
 permissions:
   contents: read
@@ -18,7 +19,7 @@ concurrency:
 
 jobs:
   idempotency:
-    name: Install twice (${{ matrix.image }})
+    name: Install twice (${{ matrix.image }}, ${{ matrix.profile }})
     runs-on: ubuntu-latest
     container: ${{ matrix.image }}
     timeout-minutes: 30
@@ -31,6 +32,13 @@ jobs:
           - 'fedora:latest'
           - 'almalinux:9'
           - 'archlinux:latest'
+        # Pushes and pull requests: the default profile on every distro, plus
+        # everything (full) on Ubuntu, to keep Actions time low. Monthly and
+        # manual runs: full on every distro.
+        profile: ${{ fromJSON(contains(fromJSON('["schedule", "workflow_dispatch"]'), github.event_name) && '["full"]' || '["dev"]') }}
+        include:
+          - image: 'ubuntu:24.04'
+            profile: full
     defaults:
       run:
         shell: bash
@@ -46,13 +54,13 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: First run installs everything
-        run: ./install.sh --yes
+        run: ./install.sh --yes --profile ${{ matrix.profile }}
 
       # A second run must find every tool already installed and change nothing.
       - name: Second run changes nothing
         run: |
           set -o pipefail
-          ./install.sh --yes | tee second-run.log
+          ./install.sh --yes --profile ${{ matrix.profile }} | tee second-run.log
           if grep -q 'Installing:' second-run.log; then
             echo "::error::The second run tried to install something again."
             exit 1
@@ -74,7 +82,7 @@ jobs:
           cd "$RUNNER_TEMP"
           bash -s -- --list --ref "$REF" <"$GITHUB_WORKSPACE/install.sh" | tee remote.log
           grep -q 'Downloading wslforge' remote.log
-          grep -q 'Claude Code' remote.log
+          grep -qE '^ +claude +default' remote.log
 
   windows:
     name: Windows questionnaire (-Yes -ConfigOnly)
