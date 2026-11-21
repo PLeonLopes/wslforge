@@ -5,7 +5,7 @@ MODULE_NAME='Base packages'
 MODULE_ORDER=10
 MODULE_DEFAULT=on
 MODULE_REQUIRED=yes
-MODULE_FAMILIES='apt'
+MODULE_FAMILIES='apt dnf pacman'
 
 # "id|description[|required]". Item ids are logical package names (see
 # lib/pkg.sh). Required items are used by other modules and cannot be skipped.
@@ -22,6 +22,10 @@ MODULE_ITEMS=(
   'tree|Show directories as a tree'
   'less|Scroll through long output and files'
 )
+
+is_available() {
+  pkg_available "$1"
+}
 
 is_installed() {
   pkgs_installed "$1"

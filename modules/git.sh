@@ -4,7 +4,7 @@
 MODULE_NAME='Git + GitHub CLI'
 MODULE_ORDER=30
 MODULE_DEFAULT=on
-MODULE_FAMILIES='apt'
+MODULE_FAMILIES='apt dnf pacman'
 
 MODULE_ITEMS=(
   'git|Version control, plus your git identity (name/email)|required'
@@ -12,6 +12,10 @@ MODULE_ITEMS=(
   'ssh-client|SSH client, used to push and pull over SSH'
   'gh|GitHub CLI: login, pull requests, issues'
 )
+
+is_available() {
+  [[ $1 == gh ]] || pkg_available "$1"
+}
 
 is_installed() {
   case $1 in
@@ -29,11 +33,17 @@ do_install() {
     pkg_install "${packages[@]}"
   fi
 
-  # The distro gh packages lag behind, so use GitHub's official repository.
+  # Most distro gh packages lag behind, so use GitHub's official repository
+  # (Arch keeps github-cli up to date).
   if in_list gh "$@"; then
-    apt_add_repo github-cli \
-      https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-      'https://cli.github.com/packages stable main'
+    case $DISTRO_FAMILY in
+      apt)
+        apt_add_repo github-cli \
+          https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+          'https://cli.github.com/packages stable main'
+        ;;
+      dnf) rpm_add_repo gh-cli https://cli.github.com/packages/rpm/gh-cli.repo ;;
+    esac
     pkg_install gh
   fi
 

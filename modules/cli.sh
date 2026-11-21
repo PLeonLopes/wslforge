@@ -4,7 +4,7 @@
 MODULE_NAME='Modern CLI tools'
 MODULE_ORDER=20
 MODULE_DEFAULT=on
-MODULE_FAMILIES='apt'
+MODULE_FAMILIES='apt dnf pacman'
 
 MODULE_ITEMS=(
   'ripgrep|rg: very fast text search (grep alternative)'
@@ -15,7 +15,8 @@ MODULE_ITEMS=(
 )
 
 # Debian and Ubuntu ship fd and bat as "fdfind" and "batcat"; we expose the
-# usual names through symlinks in ~/.local/bin.
+# usual names through symlinks in ~/.local/bin. Other distros use the usual
+# names already. (AlmaLinux gets these tools from EPEL; see lib/pkg.sh.)
 CLI_BIN_DIR="$HOME/.local/bin"
 
 _cli_alias_ok() {
@@ -31,6 +32,10 @@ _cli_link() {
   run ln -s "$target" "$CLI_BIN_DIR/$name"
 }
 
+is_available() {
+  pkg_available "$1"
+}
+
 is_installed() {
   pkgs_installed "$1" || return 1
   case $1 in
@@ -41,10 +46,10 @@ is_installed() {
 
 do_install() {
   pkg_install "$@"
-  if in_list fd "$@"; then
+  if [[ $DISTRO_FAMILY == apt ]] && in_list fd "$@"; then
     _cli_link fdfind fd
   fi
-  if in_list bat "$@"; then
+  if [[ $DISTRO_FAMILY == apt ]] && in_list bat "$@"; then
     _cli_link batcat bat
   fi
 }

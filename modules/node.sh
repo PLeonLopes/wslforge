@@ -4,7 +4,7 @@
 MODULE_NAME='Node.js (fnm) + pnpm'
 MODULE_ORDER=50
 MODULE_DEFAULT=on
-MODULE_FAMILIES='apt'
+MODULE_FAMILIES='apt dnf pacman'
 MODULE_ROOT=no      # installs into the home directory only
 
 MODULE_ITEMS=(
