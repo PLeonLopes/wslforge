@@ -1,7 +1,8 @@
 #Requires -Version 5.1
 <#
-wslforge for Windows: a few questions (every one has a default), a summary,
-and a wslforge.conf with the answers for the distro to be created.
+wslforge for Windows: a few questions (every one has a default), then it
+enables WSL if needed, creates the distro and your Linux user, and runs
+install.sh inside it. One command, from a PC without WSL to a ready terminal.
 
 Run it:
   irm https://raw.githubusercontent.com/PLeonLopes/wslforge/main/install.ps1 | iex
@@ -13,13 +14,22 @@ This file must stay plain ASCII: Windows PowerShell 5.1 misreads other
 characters in files without a BOM. Symbols are built with [char] instead.
 #>
 param(
-    # Accept every default without asking.
+    # Accept every default without asking (the Linux password is still asked).
     [switch]$Yes,
     # Menu style: auto (gum when possible), gum or text.
     [ValidateSet('auto', 'gum', 'text')]
     [string]$Ui = 'auto',
-    # Where to save the answers (default: ~\.wslforge\wslforge.conf).
-    [string]$OutFile = '',
+    # Where the answers are saved (default: ~\.wslforge\wslforge.conf).
+    [Alias('OutFile')]
+    [string]$Config = '',
+    # Only save the answers; do not set anything up.
+    [switch]$ConfigOnly,
+    # Use the saved answers instead of asking again (also used after a restart).
+    [switch]$Resume,
+    # Branch or tag of wslforge to install inside the distro.
+    [string]$Ref = '',
+    # A local wslforge folder to install from instead of GitHub (development).
+    [string]$RepoPath = '',
     [switch]$Help
 )
 
@@ -29,12 +39,25 @@ $ProgressPreference = 'SilentlyContinue'
 
 # Functions read the parameters from here. Script parameters used only inside
 # functions look unused to PSScriptAnalyzer (PSReviewUnusedParameter).
-$RunOptions = @{ Yes = [bool]$Yes; Ui = $Ui; OutFile = $OutFile; Help = [bool]$Help }
+$RunOptions = @{
+    Yes        = [bool]$Yes
+    Ui         = $Ui
+    Config     = $Config
+    ConfigOnly = [bool]$ConfigOnly
+    Resume     = [bool]$Resume
+    Ref        = $Ref
+    RepoPath   = $RepoPath
+    Help       = [bool]$Help
+}
 
 $WslforgeVersion = '0.2.0-dev'
 $GumVersion = '2.0.2'
 $StateDir = Join-Path $HOME '.wslforge'
 $DistroListUrl = 'https://raw.githubusercontent.com/microsoft/WSL/master/distributions/DistributionInfo.json'
+$RawUrl = 'https://raw.githubusercontent.com/PLeonLopes/wslforge'
+# "wsl --install --name/--location" needs this WSL version or newer.
+$MinWslVersion = [version]'2.4.4'
+$WslConfigPath = Join-Path $HOME '.wslconfig'
 
 # Families install.sh supports today (apt). Others arrive in Phase 4.
 $SupportedFamilies = @('Ubuntu', 'Debian', 'kali')
@@ -102,16 +125,22 @@ wslforge $WslforgeVersion for Windows: set up WSL for development.
 
 Usage:
   irm https://raw.githubusercontent.com/PLeonLopes/wslforge/main/install.ps1 | iex
-  .\install.ps1 [-Yes] [-Ui auto|gum|text] [-OutFile PATH]
+  .\install.ps1 [-Yes] [-Ui auto|gum|text] [-Config PATH] [-ConfigOnly] [-Resume]
 
 Options:
-  -Yes        Accept every default without asking
-  -Ui NAME    Menu style: auto (default), gum or text
-  -OutFile    Where to save the answers (default: ~\.wslforge\wslforge.conf)
-  -Help       Show this help
+  -Yes          Accept every default (the Linux password is still asked)
+  -Ui NAME      Menu style: auto (default), gum or text
+  -Config PATH  Where the answers are saved (default: ~\.wslforge\wslforge.conf)
+  -ConfigOnly   Only save the answers; set nothing up
+  -Resume       Use the saved answers instead of asking again
+  -Ref REF      Branch or tag of wslforge to install in the distro
+  -RepoPath DIR Install from a local wslforge folder (development)
+  -Help         Show this help
 
-This version asks the questions and saves the answers. Creating the distro
-from them arrives in the next version.
+What it does: asks a few questions, enables WSL (administrator rights and a
+restart, only if it is not enabled yet; it continues by itself after the
+restart), creates the distro and your Linux user, sets the WSL memory and CPU
+limits in ~\.wslconfig, and installs your tools inside the distro.
 "@
 }
 
@@ -211,7 +240,7 @@ function Format-Label([string]$Text) {
 function Show-Banner([string]$Title, [string]$Subtitle) {
     if ($UiState.Backend -eq 'gum') {
         $bold = & $UiState.Gum style --bold --foreground $Forge.Ember $Title
-        & $UiState.Gum style --border rounded --border-foreground $Forge.Ember --padding '0 2' --margin '1 0 0 0' $bold $Subtitle
+        & $UiState.Gum style --border rounded --border-foreground $Forge.Ember --padding '0 2' --margin '1 0 0 0' $bold $Subtitle | Out-Host
         return
     }
     Write-Host ''
@@ -285,6 +314,53 @@ function Confirm-Answer([string]$Question) {
     return (-not $reply -or $reply -match '^[Yy]')
 }
 
+# Read-Password USER: ask for the new Linux password twice. Never stored.
+function Read-Password([string]$User) {
+    $prompt = "Password for $User in Linux (used by sudo)"
+    while ($true) {
+        $first = Read-Secret $prompt
+        if ($first.Length -eq 0) {
+            Write-Caution 'The password cannot be empty.'
+            continue
+        }
+        $second = Read-Secret 'Type it again'
+        if ((ConvertFrom-Secret $first) -cne (ConvertFrom-Secret $second)) {
+            Write-Caution 'The passwords do not match; try again.'
+            continue
+        }
+        return $first
+    }
+}
+
+# Read-Secret PROMPT: a hidden answer, as a SecureString.
+function Read-Secret([string]$Prompt) {
+    if ($UiState.Backend -eq 'gum') {
+        $result = Invoke-Gum @('input', '--password', '--header', $Prompt, '--placeholder', $Prompt)
+        if ($result.Code -ne 0) { throw 'Cancelled.' }
+        return (ConvertTo-Secret $result.Answer)
+    }
+    if ([Console]::IsInputRedirected) {
+        # Piped input (automation): Read-Host -AsSecureString would wait for
+        # a keyboard that is not there.
+        $line = [Console]::In.ReadLine()
+        if ($null -eq $line) { throw 'No password given.' }
+        return (ConvertTo-Secret $line)
+    }
+    return (Read-Host -AsSecureString "  $Prompt")
+}
+
+function ConvertTo-Secret([string]$Text) {
+    $secure = New-Object Security.SecureString
+    foreach ($char in $Text.ToCharArray()) { $secure.AppendChar($char) }
+    return $secure
+}
+
+function ConvertFrom-Secret([Security.SecureString]$Secret) {
+    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secret)
+    try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
+}
+
 # ---------------------------------------------------------------- system facts
 
 # Get-DistroCatalog: installable distros of the supported families, from the
@@ -331,6 +407,41 @@ function Test-WslReady {
     $ErrorActionPreference = 'Continue'
     & wsl.exe --status *> $null
     return ($LASTEXITCODE -eq 0)
+}
+
+# Get-WslVersion: the installed WSL version, or $null for the old built-in
+# WSL that has no "--version" (it needs "wsl --update").
+function Get-WslVersion {
+    $ErrorActionPreference = 'Continue'
+    $previous = $env:WSL_UTF8
+    $env:WSL_UTF8 = '1'
+    try {
+        $output = & wsl.exe --version 2>$null
+        if ($LASTEXITCODE -ne 0) { return $null }
+    }
+    finally {
+        $env:WSL_UTF8 = $previous
+    }
+    # The first line is localized ("WSL version: 2.4.11.0"); take the number.
+    $first = "$($output | Select-Object -First 1)" -replace "`0", ''
+    if ($first -match '(\d+\.\d+\.\d+(\.\d+)?)') { return [version]$Matches[1] }
+    return $null
+}
+
+# Get-WslConfigNumber KEY: memory (in GB) or processors from ~\.wslconfig,
+# so the questions start from what is already set. 0 when not set.
+function Get-WslConfigNumber([string]$Key) {
+    if (-not (Test-Path $WslConfigPath)) { return 0 }
+    $value = Get-IniValue ([IO.File]::ReadAllLines($WslConfigPath)) 'wsl2' $Key
+    if (-not $value) { return 0 }
+    if ($Key -eq 'memory') {
+        if ($value -match '^(\d+)\s*GB$') { return [int]$Matches[1] }
+        if ($value -match '^(\d+)\s*MB$') { return [int][math]::Floor([int]$Matches[1] / 1024) }
+        return 0
+    }
+    $number = 0
+    if ([int]::TryParse($value, [ref]$number)) { return $number }
+    return 0
 }
 
 # Get-FreeName NAME TAKEN: NAME, or NAME-2, NAME-3... when already in use.
@@ -389,6 +500,12 @@ function Read-Questionnaire {
         GitEmail = Get-GitSetting 'user.email'
         User     = Get-SuggestedUser
     }
+
+    # Keep the limits already set in ~\.wslconfig, when they make sense here.
+    $memorySet = Get-WslConfigNumber 'memory'
+    if ($memorySet -ge 1 -and $memorySet -le $memoryTotal) { $defaults.MemoryGB = $memorySet }
+    $cpusSet = Get-WslConfigNumber 'processors'
+    if ($cpusSet -ge 1 -and $cpusSet -le $cpuTotal) { $defaults.Cpus = $cpusSet }
 
     if ($RunOptions.Yes) {
         $name = Get-FreeName $defaults.Distro $taken
@@ -464,7 +581,7 @@ function Show-Summary($Answers, [bool]$WslReady) {
         'Distro'          = $Answers.Distro
         'Name'            = $Answers.Name
         'Install folder'  = $Answers.Location
-        'Linux user'      = "$($Answers.User) (the password is asked right before the distro is created)"
+        'Linux user'      = "$($Answers.User) (the password is asked before the distro is created)"
         'WSL memory/CPUs' = "$($Answers.MemoryGB) GB / $($Answers.Cpus) cores"
         'Tools'           = "profile $($Answers.Profile)"
         'Git identity'    = "$($Answers.GitName) <$($Answers.GitEmail)>"
@@ -477,7 +594,8 @@ function Show-Summary($Answers, [bool]$WslReady) {
         Write-Note "$($C.Ash)WSL is already enabled on this PC.$($C.Reset)"
     }
     else {
-        Write-Note "$($C.Ash)WSL is not enabled yet: it will need administrator rights and maybe a restart.$($C.Reset)"
+        Write-Note "$($C.Ash)WSL is not enabled yet: that needs administrator rights and a restart;$($C.Reset)"
+        Write-Note "$($C.Ash)wslforge continues by itself after the restart.$($C.Reset)"
     }
 }
 
@@ -510,6 +628,405 @@ function Save-Config($Answers, [string]$Path) {
     [IO.File]::WriteAllText($Path, $text, (New-Object Text.UTF8Encoding $false))
 }
 
+# Read-Config PATH: the answers saved by Save-Config.
+function Read-Config([string]$Path) {
+    if (-not (Test-Path $Path)) { throw "No saved answers in $Path; run without -Resume first." }
+    $values = @{}
+    foreach ($line in [IO.File]::ReadAllLines($Path)) {
+        if ($line -match '^\s*([A-Z_][A-Z0-9_]*)=(.*)$') {
+            $key = $Matches[1]
+            $value = $Matches[2].Trim()
+            if ($value -match '^"(.*)"$' -or $value -match "^'(.*)'$") { $value = $Matches[1] }
+            $values[$key] = $value
+        }
+    }
+    foreach ($key in 'WSL_DISTRO', 'WSL_NAME', 'WSL_LOCATION', 'WSL_USER', 'WSL_MEMORY_GB', 'WSL_CPUS') {
+        if (-not $values[$key]) { throw "$Path has no $key; run without -Resume to answer again." }
+    }
+    $profileName = $values['PROFILE']
+    if (-not $profileName) { $profileName = 'dev' }
+    return [ordered]@{
+        Distro   = $values['WSL_DISTRO']
+        Name     = $values['WSL_NAME']
+        Location = $values['WSL_LOCATION']
+        User     = $values['WSL_USER']
+        MemoryGB = [int]$values['WSL_MEMORY_GB']
+        Cpus     = [int]$values['WSL_CPUS']
+        Profile  = $profileName
+        GitName  = "$($values['GIT_NAME'])"
+        GitEmail = "$($values['GIT_EMAIL'])"
+    }
+}
+
+# ---------------------------------------------------------------- .wslconfig
+
+# Get-IniValue LINES SECTION KEY: the value of KEY in [SECTION], or ''.
+function Get-IniValue([string[]]$Lines, [string]$Section, [string]$Key) {
+    $current = ''
+    foreach ($line in $Lines) {
+        if ($line -match '^\s*\[(.+)\]\s*$') { $current = $Matches[1].Trim(); continue }
+        if ($current -eq $Section -and $line -match ('^\s*' + [regex]::Escape($Key) + '\s*=\s*(.*?)\s*$')) {
+            return $Matches[1]
+        }
+    }
+    return ''
+}
+
+# Edit-IniValue LINES SECTION KEY VALUE: set KEY=VALUE in [SECTION] of a list
+# of lines, keeping every other line (and comment) as it was.
+function Edit-IniValue([Collections.Generic.List[string]]$Lines, [string]$Section, [string]$Key, [string]$Value) {
+    $current = ''
+    $start = -1
+    $lastEntry = -1
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        $line = $Lines[$i]
+        if ($line -match '^\s*\[(.+)\]\s*$') {
+            if ($start -ge 0) { break }
+            $current = $Matches[1].Trim()
+            if ($current -eq $Section) { $start = $i; $lastEntry = $i }
+            continue
+        }
+        if ($start -lt 0) { continue }
+        if ($line -match ('^\s*' + [regex]::Escape($Key) + '\s*=')) {
+            $Lines[$i] = "$Key=$Value"
+            return
+        }
+        if ($line.Trim()) { $lastEntry = $i }
+    }
+    if ($start -lt 0) {
+        if ($Lines.Count -gt 0 -and $Lines[$Lines.Count - 1].Trim()) { $Lines.Add('') }
+        $Lines.Add("[$Section]")
+        $Lines.Add("$Key=$Value")
+        return
+    }
+    $Lines.Insert($lastEntry + 1, "$Key=$Value")
+}
+
+# Write-WslConfig ANSWERS: memory and processors in ~\.wslconfig. The rest of
+# the file stays; a backup is kept the first time wslforge changes it.
+function Write-WslConfig($Answers) {
+    $memory = "$($Answers.MemoryGB)GB"
+    $cpus = "$($Answers.Cpus)"
+    $lines = New-Object 'Collections.Generic.List[string]'
+    if (Test-Path $WslConfigPath) {
+        foreach ($line in [IO.File]::ReadAllLines($WslConfigPath)) { $lines.Add($line) }
+    }
+    if ((Get-IniValue $lines 'wsl2' 'memory') -eq $memory -and (Get-IniValue $lines 'wsl2' 'processors') -eq $cpus) {
+        Write-Success "~\.wslconfig already has $memory and $cpus CPU cores"
+        return
+    }
+    $backup = "$WslConfigPath.wslforge-backup"
+    if ((Test-Path $WslConfigPath) -and -not (Test-Path $backup)) {
+        Copy-Item -Path $WslConfigPath -Destination $backup
+        Write-Note "Backup of the previous file: $backup"
+    }
+    Edit-IniValue $lines 'wsl2' 'memory' $memory
+    Edit-IniValue $lines 'wsl2' 'processors' $cpus
+    $text = ($lines -join "`r`n") + "`r`n"
+    [IO.File]::WriteAllText($WslConfigPath, $text, (New-Object Text.UTF8Encoding $false))
+    Write-Success "~\.wslconfig: memory=$memory, processors=$cpus"
+    Write-Note "$($C.Ash)It applies to every distro after WSL restarts (wsl --shutdown closes all of them).$($C.Reset)"
+}
+
+# ---------------------------------------------------------------- running things
+
+# Invoke-Console FILE ARGUMENTS [INPUT] [QUIET]: run a program on this
+# console (so Linux gets a real terminal) and return its exit code. INPUT,
+# when given, is sent to its stdin as UTF-8. QUIET hides the output unless
+# the program fails.
+function Invoke-Console([string]$File, [string]$Arguments, [string]$InputText = $null, [bool]$Quiet = $false) {
+    $info = New-Object Diagnostics.ProcessStartInfo $File, $Arguments
+    $info.UseShellExecute = $false
+    # A UNC current folder (\\wsl.localhost\...) cannot be mapped into Linux.
+    $info.WorkingDirectory = $HOME
+    if ($null -ne $InputText) { $info.RedirectStandardInput = $true }
+    if ($Quiet) {
+        $info.RedirectStandardOutput = $true
+        $info.RedirectStandardError = $true
+    }
+    $process = [Diagnostics.Process]::Start($info)
+    if ($null -ne $InputText) {
+        $bytes = (New-Object Text.UTF8Encoding $false).GetBytes($InputText)
+        $process.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+        $process.StandardInput.Close()
+    }
+    $output = ''
+    if ($Quiet) { $output = $process.StandardOutput.ReadToEnd() + $process.StandardError.ReadToEnd() }
+    $process.WaitForExit()
+    if ($Quiet -and $process.ExitCode -ne 0) { Write-Host $output.Trim() }
+    return $process.ExitCode
+}
+
+# Join-Argument ARGS: one Windows command line. No argument here ever holds
+# a double quote (they are names, paths and bash code built without them).
+function Join-Argument([string[]]$Arguments) {
+    $parts = foreach ($argument in $Arguments) {
+        if ($argument -match '[\s;&|]' -or -not $argument) { '"' + $argument + '"' } else { $argument }
+    }
+    return ($parts -join ' ')
+}
+
+# ConvertTo-BashWord TEXT: TEXT as one single-quoted bash word.
+function ConvertTo-BashWord([string]$Text) {
+    return "'" + $Text.Replace("'", "'\''") + "'"
+}
+
+# Invoke-Wsl ARGS [INPUT] [QUIET]: wsl.exe on this console, with UTF-8 output.
+function Invoke-Wsl([string[]]$Arguments, [string]$InputText = $null, [bool]$Quiet = $false) {
+    $previous = $env:WSL_UTF8
+    $env:WSL_UTF8 = '1'
+    try { return (Invoke-Console 'wsl.exe' (Join-Argument $Arguments) $InputText $Quiet) }
+    finally { $env:WSL_UTF8 = $previous }
+}
+
+# Invoke-Elevated COMMAND: run a PowerShell command as administrator (Windows
+# asks for permission) and return its exit code. Only when really needed.
+function Invoke-Elevated([string]$Command) {
+    $script = "$Command; exit `$LASTEXITCODE"
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
+    try {
+        $process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru `
+            -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded)
+    }
+    catch {
+        throw 'Administrator rights were not granted, so WSL could not be set up.'
+    }
+    return $process.ExitCode
+}
+
+# Get-ResumeHint CONFIG: the command that continues with the saved answers.
+function Get-ResumeHint([string]$ConfigPath) {
+    $hint = '.\install.ps1 -Resume'
+    if ($ConfigPath -ne [IO.Path]::GetFullPath((Join-Path $StateDir 'wslforge.conf'))) {
+        $hint += " -Config `"$ConfigPath`""
+    }
+    return $hint
+}
+
+# Get-InstallRef: what to install inside the distro. -dev versions follow the
+# main branch, releases their own tag (same rule as install.sh).
+function Get-InstallRef {
+    if ($RunOptions.Ref) { return $RunOptions.Ref }
+    if ($WslforgeVersion -like '*-dev') { return 'main' }
+    return "v$WslforgeVersion"
+}
+
+# ---------------------------------------------------------------- WSL itself
+
+# Install-Wsl CONFIG: enable WSL (as administrator) and continue after the
+# restart through a RunOnce entry that reuses the saved answers.
+function Install-Wsl([string]$ConfigPath) {
+    Write-Step 'Enabling WSL'
+    Write-Note 'This needs administrator rights: Windows will ask for permission.'
+    $code = Invoke-Elevated 'wsl.exe --install --no-distribution'
+    # 3010: success, restart required.
+    if ($code -ne 0 -and $code -ne 3010) { throw "Enabling WSL failed (exit code $code)." }
+
+    Register-Resume $ConfigPath
+    Write-Success 'WSL is enabled. Windows needs a restart to finish.'
+    Write-Note 'After the restart, sign in: wslforge opens and continues with your answers.'
+    if (-not $RunOptions.Yes -and (Confirm-Answer 'Restart now?')) {
+        Restart-Computer -Force
+    }
+    else {
+        Write-Note 'Restart when you are ready.'
+    }
+}
+
+# Register-Resume CONFIG: keep a copy of this script and run it once at the
+# next sign-in with -Resume (RunOnce needs no administrator rights).
+function Register-Resume([string]$ConfigPath) {
+    $copy = Join-Path $StateDir 'install.ps1'
+    New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
+    if ($PSCommandPath -and ([IO.Path]::GetFullPath($PSCommandPath) -ne $copy)) {
+        Copy-Item -Path $PSCommandPath -Destination $copy -Force
+    }
+    elseif ($RunOptions.RepoPath) {
+        Copy-Item -Path (Join-Path $RunOptions.RepoPath 'install.ps1') -Destination $copy -Force
+    }
+    elseif (-not $PSCommandPath) {
+        # Run through "irm | iex": there is no file, so fetch the same version.
+        Invoke-WebRequest -UseBasicParsing -Uri "$RawUrl/$(Get-InstallRef)/install.ps1" -OutFile $copy
+    }
+
+    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-File', $copy,
+        '-Resume', '-Config', $ConfigPath, '-Ui', $RunOptions.Ui)
+    if ($RunOptions.Ref) { $arguments += @('-Ref', $RunOptions.Ref) }
+    if ($RunOptions.RepoPath) { $arguments += @('-RepoPath', $RunOptions.RepoPath) }
+    $command = 'powershell.exe ' + (Join-Argument $arguments)
+    $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce'
+    if (-not (Test-Path $key)) { New-Item -Path $key -Force | Out-Null }
+    Set-ItemProperty -Path $key -Name 'wslforge' -Value $command
+}
+
+# Install-WslUpdate: "wsl --install --name/--location" needs a recent WSL.
+function Install-WslUpdate {
+    $version = Get-WslVersion
+    if ($version -and $version -ge $MinWslVersion) { return }
+    Write-Step 'Updating WSL'
+    Write-Note "wslforge needs WSL $MinWslVersion or newer; Windows will ask for permission."
+    $code = Invoke-Elevated 'wsl.exe --update'
+    $version = Get-WslVersion
+    if ($code -ne 0 -or -not $version -or $version -lt $MinWslVersion) {
+        throw "Could not update WSL (run 'wsl --update' as administrator and try again with -Resume)."
+    }
+    Write-Success "WSL $version"
+}
+
+# ---------------------------------------------------------------- the distro
+
+# Install-Distro ANSWERS: install the distro under the chosen name and folder.
+function Install-Distro($Answers) {
+    if ((Get-InstalledDistro) -contains $Answers.Name) {
+        Write-Note "$($Answers.Name) already exists; continuing with it."
+        return
+    }
+    Write-Step "Creating $($Answers.Name) ($($Answers.Distro))"
+    $code = Invoke-Wsl @('--install', $Answers.Distro, '--name', $Answers.Name, '--location', $Answers.Location, '--no-launch')
+    if ($code -ne 0 -or -not ((Get-InstalledDistro) -contains $Answers.Name)) {
+        throw "Creating $($Answers.Name) failed (exit code $code)."
+    }
+    Write-Success "$($Answers.Name) created in $($Answers.Location)"
+}
+
+# Initialize-LinuxUser ANSWERS PASSWORD: create the user with sudo, make it
+# the default, turn systemd on, and grant passwordless sudo for the install
+# (install.sh removes it when it ends). The script goes through stdin, so the
+# password never shows up in a command line or a file.
+function Initialize-LinuxUser($Answers, [Security.SecureString]$Secret) {
+    Write-Step "Creating the Linux user $($Answers.User)"
+    $marker = 'WSLFORGE_' + ([guid]::NewGuid().ToString('N'))
+    $setup = @'
+set -eu
+user=__USER__
+export DEBIAN_FRONTEND=noninteractive
+
+# sudo and curl: install.sh needs both, and minimal images may lack them.
+missing=''
+command -v sudo >/dev/null 2>&1 || missing="$missing sudo"
+command -v curl >/dev/null 2>&1 || missing="$missing curl ca-certificates"
+if [ -n "$missing" ]; then
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -qq && apt-get install -y -qq $missing >/dev/null
+  else
+    echo "Please install:$missing" >&2
+    exit 1
+  fi
+fi
+
+# UID 1000 when free: the distro's first-run setup then sees the user and
+# does not ask to create another one.
+if ! id -u "$user" >/dev/null 2>&1; then
+  if getent passwd 1000 >/dev/null; then
+    useradd -m -s /bin/bash "$user"
+  else
+    useradd -m -s /bin/bash -u 1000 "$user"
+  fi
+fi
+for group in sudo adm cdrom dip plugdev; do
+  if getent group "$group" >/dev/null; then usermod -aG "$group" "$user"; fi
+done
+chpasswd <<'__MARKER__'
+__USER__:__PASSWORD__
+__MARKER__
+
+# set_key FILE SECTION KEY VALUE: set KEY=VALUE in [SECTION], keep the rest.
+set_key() {
+  touch "$1"
+  awk -v s="$2" -v k="$3" -v v="$4" '
+    /^[[:space:]]*\[/ {
+      if (in_sec && !done) { print k "=" v; done = 1 }
+      sec = $0; gsub(/^[[:space:]]*\[|\][[:space:]]*$/, "", sec); in_sec = (sec == s); print; next
+    }
+    in_sec && $0 ~ "^[[:space:]]*" k "[[:space:]]*=" { if (!done) { print k "=" v; done = 1 }; next }
+    { print }
+    END { if (in_sec && !done) { print k "=" v; done = 1 }; if (!done) { print ""; print "[" s "]"; print k "=" v } }
+  ' "$1" > "$1.new" && mv "$1.new" "$1"
+}
+set_key /etc/wsl.conf boot systemd true
+set_key /etc/wsl.conf user default "$user"
+
+printf '%s ALL=(ALL) NOPASSWD: ALL
+' "$user" > /etc/sudoers.d/wslforge-setup
+chmod 440 /etc/sudoers.d/wslforge-setup
+echo "User $user is ready."
+# end
+'@
+    $setup = $setup.Replace("`r", '').Replace('__MARKER__', $marker).Replace('__USER__', $Answers.User)
+    $setup = $setup.Replace('__PASSWORD__', (ConvertFrom-Secret $Secret))
+    $code = Invoke-Wsl @('-d', $Answers.Name, '-u', 'root', '--cd', '/', '--', 'bash', '-s') $setup
+    $setup = $null
+    if ($code -ne 0) { throw "Setting up the user $($Answers.User) failed (exit code $code)." }
+
+    Invoke-Wsl @('--manage', $Answers.Name, '--set-default-user', $Answers.User) $null $true | Out-Null
+    # Restart the distro so systemd and the default user take effect.
+    Invoke-Wsl @('--terminate', $Answers.Name) $null $true | Out-Null
+    Write-Success "$($Answers.User) is the default user, with sudo; systemd is on"
+}
+
+# Invoke-LinuxInstaller ANSWERS CONFIG: run install.sh inside the distro as
+# the new user, with the saved answers. Returns its exit code.
+function Invoke-LinuxInstaller($Answers, [string]$ConfigPath) {
+    Write-Step "Installing your tools in $($Answers.Name)"
+    $config = ConvertTo-BashWord (ConvertTo-WslPath $ConfigPath)
+    $source = $null
+    try {
+        if ($RunOptions.RepoPath) {
+            # A copy on C: so the distro can read it (also from \\wsl.localhost).
+            $source = Join-Path ([IO.Path]::GetTempPath()) ('wslforge-src-' + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory -Path $source | Out-Null
+            Get-ChildItem -Force -Path $RunOptions.RepoPath | Where-Object { $_.Name -ne '.git' } |
+                Copy-Item -Destination $source -Recurse -Force
+            $script = ConvertTo-BashWord ((ConvertTo-WslPath $source) + '/install.sh')
+            $command = "bash $script --config $config --from-windows"
+        }
+        else {
+            $ref = Get-InstallRef
+            $url = ConvertTo-BashWord "$RawUrl/$ref/install.sh"
+            $command = "curl -fsSL $url | bash -s -- --ref $(ConvertTo-BashWord $ref) --config $config --from-windows"
+        }
+        # The distro has just started: let systemd finish booting first, so
+        # services (like Docker) can be enabled right away.
+        $command = '(timeout 90 systemctl is-system-running --wait >/dev/null 2>&1 || true); ' + $command
+        return (Invoke-Wsl @('-d', $Answers.Name, '-u', $Answers.User, '--cd', '~', '--', 'bash', '-lc', $command))
+    }
+    finally {
+        # install.sh drops the temporary sudo rule itself; this covers a crash.
+        Invoke-Wsl @('-d', $Answers.Name, '-u', 'root', '--cd', '/', '--', 'rm', '-f', '/etc/sudoers.d/wslforge-setup') $null $true | Out-Null
+        if ($source) { Remove-Item -Recurse -Force -Path $source -ErrorAction SilentlyContinue }
+    }
+}
+
+# Invoke-Setup ANSWERS CONFIG: everything after the questions.
+function Invoke-Setup($Answers, [string]$ConfigPath) {
+    if (-not (Test-WslReady)) {
+        Install-Wsl $ConfigPath
+        return 0
+    }
+    Install-WslUpdate
+
+    Write-Step 'Linux password'
+    $secret = Read-Password $Answers.User
+
+    Install-Distro $Answers
+    Initialize-LinuxUser $Answers $secret
+    $secret.Dispose()
+
+    Write-Step 'WSL limits'
+    Write-WslConfig $Answers
+
+    $code = Invoke-LinuxInstaller $Answers $ConfigPath
+    Write-Host ''
+    if ($code -ne 0) {
+        Write-Caution "Some tools did not install (exit code $code). Details: ~/.wslforge/install.log in $($Answers.Name)."
+        Write-Note "To try again: $($C.Ember)$(Get-ResumeHint $ConfigPath)$($C.Reset) (it skips what is already done)."
+        return 1
+    }
+    Write-Success "$($Answers.Name) is ready."
+    Write-Note "Open it with $($C.Ember)wsl -d $($Answers.Name)$($C.Reset) or from the Windows Terminal menu."
+    return 0
+}
+
 # ---------------------------------------------------------------- main
 
 function Invoke-Main {
@@ -517,33 +1034,49 @@ function Invoke-Main {
         Show-Usage
         return 0
     }
-    $configPath = $RunOptions.OutFile
+    $configPath = $RunOptions.Config
     if (-not $configPath) { $configPath = Join-Path $StateDir 'wslforge.conf' }
     $configPath = [IO.Path]::GetFullPath($configPath)
 
     if (-not $RunOptions.Yes) { Initialize-Ui }
     Show-Banner "wslforge $WslforgeVersion" 'Set up WSL for development on this PC'
 
-    $answers = Read-Questionnaire
-    $wslReady = Test-WslReady
-    Show-Summary $answers $wslReady
+    if ($RunOptions.Resume) {
+        $answers = Read-Config $configPath
+        Write-Note "Using the answers saved in $configPath"
+    }
+    else {
+        $answers = Read-Questionnaire
+    }
+    Show-Summary $answers (Test-WslReady)
 
-    if (-not $RunOptions.Yes) {
+    if ($RunOptions.ConfigOnly) {
+        if (-not $RunOptions.Yes) {
+            Write-Host ''
+            if (-not (Confirm-Answer 'Save these answers?')) {
+                Write-Note 'Nothing was saved.'
+                return 1
+            }
+        }
+        Save-Config $answers $configPath
         Write-Host ''
-        if (-not (Confirm-Answer 'Save these answers?')) {
-            Write-Note 'Nothing was saved.'
+        Write-Success "Answers saved to $configPath"
+        Write-Note "Set everything up with them later: $($C.Ember)$(Get-ResumeHint $configPath)$($C.Reset)"
+        return 0
+    }
+
+    if (-not $RunOptions.Yes -and -not $RunOptions.Resume) {
+        Write-Host ''
+        if (-not (Confirm-Answer "Set up $($answers.Name) now?")) {
+            Write-Note 'Nothing was changed.'
             return 1
         }
     }
-
-    Save-Config $answers $configPath
-    Write-Host ''
-    Write-Success "Answers saved to $configPath"
-    Write-Host ''
-    Write-Note 'Creating the distro from these answers arrives in the next version of wslforge.'
-    Write-Note 'Meanwhile, inside an existing distro you can already use the Linux settings:'
-    Write-Note "  $($C.Ember)./install.sh --config $(ConvertTo-WslPath $configPath)$($C.Reset)"
-    return 0
+    if (-not $RunOptions.Resume) {
+        Save-Config $answers $configPath
+        Write-Success "Answers saved to $configPath"
+    }
+    return (Invoke-Setup $answers $configPath)
 }
 
 $originalEncoding = [Console]::OutputEncoding
