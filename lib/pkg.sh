@@ -32,8 +32,29 @@ pkg_map() {
     ssh-client:dnf) echo openssh-clients ;;
     ssh-client:pacman) echo openssh ;;
     gh:pacman) echo github-cli ;;
+    postgresql-client:dnf) echo postgresql ;;
+    postgresql-client:pacman) echo postgresql-libs ;;
+    mariadb-client:dnf) echo mariadb ;;
+    mariadb-client:pacman) echo mariadb-clients ;;
+    # Fedora, RHEL 10 and Arch replaced Redis with Valkey, its open fork.
+    redis-cli:apt) echo redis-tools ;;
+    redis-cli:pacman) echo valkey ;;
+    redis-cli:dnf) _pkg_redis_dnf ;;
+    sqlite3:dnf | sqlite3:pacman) echo sqlite ;;
     *) echo "$1" ;;
   esac
+}
+
+# _pkg_redis_dnf: the package with redis-cli (or valkey-cli) on dnf distros.
+_pkg_redis_dnf() {
+  local major=${DISTRO_VERSION%%.*}
+  if [[ $DISTRO_ID == fedora ]]; then
+    echo valkey-compat-redis
+  elif [[ $major =~ ^[0-9]+$ ]] && ((major >= 10)); then
+    echo valkey
+  else
+    echo redis
+  fi
 }
 
 # pkg_available NAME: true when the current family has a package for NAME.

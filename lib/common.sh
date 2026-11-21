@@ -130,6 +130,111 @@ run_installer() {
   return "$rc"
 }
 
+# cpu_arch: the CPU name most download pages use (amd64 or arm64).
+cpu_arch() {
+  case $(uname -m) in
+    x86_64 | amd64) echo amd64 ;;
+    aarch64 | arm64) echo arm64 ;;
+    *) uname -m ;;
+  esac
+}
+
+# fetch_url URL: print the body of a small text URL (version files, APIs).
+fetch_url() {
+  curl -fsSL --max-time 60 "$1"
+}
+
+# fetch_verified URL FILE [SHA256]: download URL into FILE (no root) and,
+# when a checksum is given, refuse a file that does not match it.
+fetch_verified() {
+  curl -fsSL "$1" -o "$2" || return 1
+  [[ -z ${3:-} ]] && return 0
+  if ! printf '%s  %s\n' "$3" "$2" | sha256sum -c --status; then
+    log_error "Checksum mismatch for $1"
+    return 1
+  fi
+}
+
+# rc_block FILE CONTENT: keep CONTENT between "# >>> wslforge >>>" markers in
+# a user's shell startup file, replacing an older block and leaving every
+# other line alone.
+rc_block() {
+  local file=$1 begin='# >>> wslforge >>>' end='# <<< wslforge <<<' new old=''
+  new=$(printf '%s\n%s\n%s' "$begin" "$2" "$end")
+  if [[ -f $file ]]; then
+    old=$(awk -v b="$begin" -v e="$end" '$0 == b { on = 1 } on { print } $0 == e { on = 0 }' "$file")
+  fi
+  [[ $old == "$new" ]] && return 0
+  if [[ $DRY_RUN == 1 ]]; then
+    _print_dry "update the wslforge block in $file"
+    return 0
+  fi
+  if [[ -n $old ]]; then
+    local tmp
+    tmp=$(mktemp)
+    awk -v b="$begin" -v e="$end" -v n="$new" '
+      $0 == b { print n; skip = 1; next }
+      skip && $0 == e { skip = 0; next }
+      !skip { print }' "$file" >"$tmp"
+    cat "$tmp" >"$file"
+    rm -f "$tmp"
+  else
+    [[ -s $file ]] && printf '\n' >>"$file"
+    printf '%s\n' "$new" >>"$file"
+  fi
+}
+
+# SHELL_ENV: one file, read by both bash and zsh, that puts every tool
+# wslforge installs on the PATH (and starts the starship prompt). Modules
+# never edit ~/.bashrc or ~/.zshrc themselves; they call shell_env_setup.
+SHELL_ENV="$HOME/.wslforge/env.sh"
+
+shell_env_setup() {
+  local content
+  content=$(
+    cat <<'EOF'
+# Managed by wslforge and rewritten on every run: PATH entries for the
+# tools it installs, for bash and zsh. Put your own settings elsewhere.
+_wslforge_path() {
+  case ":$PATH:" in
+    *":$1:"*) ;;
+    *) [ -d "$1" ] && PATH="$1:$PATH" ;;
+  esac
+}
+_wslforge_path "$HOME/.local/bin"
+_wslforge_path /usr/local/go/bin
+_wslforge_path "$HOME/go/bin"
+_wslforge_path "$HOME/.cargo/bin"
+_wslforge_path "$HOME/.local/share/google-cloud-sdk/bin"
+if [ -d "$HOME/.local/share/pnpm" ]; then
+  export PNPM_HOME="$HOME/.local/share/pnpm"
+  _wslforge_path "$PNPM_HOME/bin"
+  _wslforge_path "$PNPM_HOME"
+fi
+_wslforge_shell=bash
+[ -n "${ZSH_VERSION:-}" ] && _wslforge_shell=zsh
+if [ -x "$HOME/.local/share/fnm/fnm" ] && [ -z "${FNM_MULTISHELL_PATH:-}" ]; then
+  _wslforge_path "$HOME/.local/share/fnm"
+  eval "$(fnm env --use-on-cd --shell "$_wslforge_shell")"
+fi
+export PATH
+case $- in
+  *i*) command -v starship >/dev/null 2>&1 && eval "$(starship init "$_wslforge_shell")" ;;
+esac
+unset -f _wslforge_path
+unset _wslforge_shell
+EOF
+  )
+  if [[ $DRY_RUN == 1 ]]; then
+    _print_dry "write $SHELL_ENV and load it from ~/.bashrc"
+  elif [[ ! -f $SHELL_ENV || $(cat "$SHELL_ENV") != "$content" ]]; then
+    mkdir -p "$(dirname "$SHELL_ENV")"
+    printf '%s\n' "$content" >"$SHELL_ENV"
+  fi
+  # shellcheck disable=SC2016  # expanded by bash at startup, not here
+  rc_block "$HOME/.bashrc" '[ -f "$HOME/.wslforge/env.sh" ] && . "$HOME/.wslforge/env.sh"'
+}
+
 # need_new_shell REASON [GROUP]: record that the user needs a fresh shell
 # (e.g. new PATH entries or a new group). install.sh offers one at the end
 # instead of every module printing its own "open a new terminal" note.
