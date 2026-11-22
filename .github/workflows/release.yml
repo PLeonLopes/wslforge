@@ -1,0 +1,42 @@
+name: Release
+
+# A merge that sets a release version (not -dev) in install.sh and install.ps1
+# publishes it: the tag v<version> and a GitHub Release whose notes are that
+# version's section of CHANGELOG.md. The install commands in the README point
+# to that tag.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Tag and publish the release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Read the version
+        id: version
+        run: echo "version=$(.github/scripts/release-info.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish v${{ steps.version.outputs.version }}
+        if: ${{ !endsWith(steps.version.outputs.version, '-dev') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            echo "v$VERSION is already released; nothing to do."
+            exit 0
+          fi
+          .github/scripts/release-info.sh --notes > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" --target "$GITHUB_SHA" \
+            --title "v$VERSION" --notes-file "$RUNNER_TEMP/notes.md"

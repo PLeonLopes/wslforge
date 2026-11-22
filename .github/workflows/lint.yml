@@ -30,6 +30,17 @@ jobs:
           shellcheck --version
           shellcheck --external-sources "${files[@]}"
 
+  version:
+    name: Version and changelog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # install.sh and install.ps1 must agree, and a release version needs its
+      # CHANGELOG.md section (the Release workflow publishes it on merge).
+      - name: Check the version
+        run: echo "Version $(.github/scripts/release-info.sh)"
+
   psscriptanalyzer:
     name: PSScriptAnalyzer
     runs-on: ubuntu-latest
