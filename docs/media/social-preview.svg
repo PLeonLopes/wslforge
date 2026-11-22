@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <!--
+    Social preview of the repository (Settings > Social preview), 1280x640.
+    Edit this file, render social-preview.png from it (see CONTRIBUTING.md,
+    "Project images") and upload the PNG again. No version number on purpose,
+    so it does not need updating on every release.
+  -->
+  <defs>
+    <radialGradient id="glow" cx="0.22" cy="0.62" r="0.55">
+      <stop offset="0" stop-color="#FF8A3D" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#FF8A3D" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="640" fill="#1A1410"/>
+  <rect width="1280" height="640" fill="url(#glow)"/>
+
+  <!-- logo mark (same drawing as logo.svg, scaled) -->
+  <g transform="translate(110 168) scale(2.4)">
+    <rect width="128" height="128" rx="28" fill="#2B2622"/>
+    <path d="M30 34 L44 44 L30 54" fill="none" stroke="#FF8A3D" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="50" y="48" width="22" height="7" rx="3.5" fill="#FFC857"/>
+    <circle cx="84" cy="34" r="4" fill="#FFC857"/>
+    <circle cx="97" cy="44" r="3" fill="#FF8A3D"/>
+    <circle cx="95" cy="27" r="2.5" fill="#FFC857"/>
+    <path d="M26 66 H98 C98 74 92 78 84 78 H76 V86 H86 L90 98 H38 L42 86 H52 V78 H44 C34 78 26 74 26 66 Z" fill="#FF8A3D"/>
+  </g>
+
+  <!-- wordmark and tagline -->
+  <text x="492" y="290" font-family="Inter, DejaVu Sans, sans-serif" font-size="112" font-weight="800" letter-spacing="-3" fill="#E8E2DA">wsl<tspan fill="#FF8A3D">forge</tspan></text>
+  <text x="496" y="352" font-family="Inter, DejaVu Sans, sans-serif" font-size="34" font-weight="500" fill="#FFC857">Your WSL development environment,</text>
+  <text x="496" y="396" font-family="Inter, DejaVu Sans, sans-serif" font-size="34" font-weight="500" fill="#FFC857">forged in one command.</text>
+
+  <!-- command chip -->
+  <rect x="492" y="438" width="430" height="56" rx="12" fill="#2B2622"/>
+  <text x="516" y="474" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="22" fill="#8A817A">PS&gt;<tspan fill="#E8E2DA" dx="12">irm .../install.ps1 | iex</tspan></text>
+
+  <!-- repo link -->
+  <text x="496" y="540" font-family="JetBrains Mono, DejaVu Sans Mono, monospace" font-size="24" fill="#E8E2DA">github.com/<tspan fill="#FF8A3D">PLeonLopes/wslforge</tspan></text>
+
+  <!-- distros -->
+  <text x="496" y="584" font-family="Inter, DejaVu Sans, sans-serif" font-size="22" fill="#8A817A">Ubuntu · Debian · Fedora · AlmaLinux · Arch</text>
+</svg>

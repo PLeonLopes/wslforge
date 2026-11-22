@@ -4,7 +4,7 @@
 # Idempotent: safe to re-run; modules that are already installed are skipped.
 set -euo pipefail
 
-WSLFORGE_VERSION='1.0.0'
+WSLFORGE_VERSION='1.0.1'
 WSLFORGE_REPO_URL=${WSLFORGE_REPO_URL:-https://github.com/PLeonLopes/wslforge}
 
 # bootstrap_remote ARGS...: under "curl ... | bash" there is no lib/ or
@@ -933,7 +933,7 @@ main() {
 
   validate_skips
   pkg_require_supported
-  is_wsl || log_warn "This does not look like WSL; continuing anyway."
+  is_wsl || log_info "Not running in WSL: the WSL-specific steps are skipped."
 
   # The menu shows up when nothing was chosen through flags or a config file.
   if ((INTERACTIVE)) && [[ -z $ONLY$SKIP_ARG$PROFILE_ARG$CONFIG_FILE ]]; then

@@ -2,6 +2,18 @@
 
 All notable changes to wslforge. Versions follow [Semantic Versioning](https://semver.org).
 
+## [1.0.1] - 2026-11-22
+
+### Changed
+
+- Plain Linux (outside WSL) is now officially supported. The same `curl | bash` command sets up a laptop, a VM or a server running a supported distro.
+- Outside WSL, the start-up message now just says that the WSL-specific steps are skipped, instead of warning that it "does not look like WSL".
+
+### Docs
+
+- The README covers the plain Linux case.
+- The social preview image is kept in `docs/media/`. `CONTRIBUTING.md` explains how to render it again.
+
 ## [1.0.0] - 2026-11-21
 
 The first release: one command from a Windows PC without WSL to a ready development terminal.
@@ -29,4 +41,5 @@ The first release: one command from a Windows PC without WSL to a ready developm
 - Safe to run again: only missing tools are installed. A failing tool never stops the others, and the summary says what happened.
 - Works through `curl | bash`, asks for `sudo` only when needed, and logs each run to `~/.wslforge/install.log`.
 
+[1.0.1]: https://github.com/PLeonLopes/wslforge/releases/tag/v1.0.1
 [1.0.0]: https://github.com/PLeonLopes/wslforge/releases/tag/v1.0.0

@@ -19,13 +19,14 @@ Pick the line that matches your PC:
 | **No WSL yet** | the PowerShell command | turns on WSL, then creates a new distro and sets it up |
 | **WSL, and you want a fresh distro** | the PowerShell command | creates a new distro next to your others, which stay untouched |
 | **A distro you already use** | the Linux command, inside it | installs the tools in that distro |
+| **Linux, without Windows** | the Linux command | installs the tools on your laptop, VM or server |
 
 ### A new distro, from Windows
 
 Open PowerShell (no administrator needed) and run:
 
 ```powershell
-irm https://raw.githubusercontent.com/PLeonLopes/wslforge/v1.0.0/install.ps1 | iex
+irm https://raw.githubusercontent.com/PLeonLopes/wslforge/v1.0.1/install.ps1 | iex
 ```
 
 1. **Answer the questions.** The questions cover:
@@ -39,15 +40,17 @@ irm https://raw.githubusercontent.com/PLeonLopes/wslforge/v1.0.0/install.ps1 | i
 2. **Approve the prompts.** Windows asks for administrator rights only if WSL must be turned on or updated. If a restart is needed, wslforge continues by itself after you sign in again. With an up-to-date WSL, none of this happens.
 3. **Choose a password** for your Linux user. wslforge creates the distro and installs everything inside it. To open it afterwards, run `wsl -d <name>` or pick it from the Windows Terminal menu.
 
-### A distro you already have
+### A distro you already have, or plain Linux
 
 Open your distro (Ubuntu, Debian, Fedora...) and run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/PLeonLopes/wslforge/v1.0.0/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/PLeonLopes/wslforge/v1.0.1/install.sh | bash
 ```
 
 A menu lets you pick a profile or single tools. It asks for your `sudo` password only when something needs it.
+
+The same command works on a regular Linux install, not only in WSL. On a laptop, a VM or a server running a [supported distro](#supported-distros), the WSL-only steps are skipped. For example, Docker then starts through your system's own systemd.
 
 ## What you get
 
@@ -135,7 +138,7 @@ Running wslforge again is safe: tools already installed are skipped, and the sum
 - On Windows, your answers are kept. To retry without answering again (finished steps are skipped):
 
   ```powershell
-  & ([scriptblock]::Create((irm https://raw.githubusercontent.com/PLeonLopes/wslforge/v1.0.0/install.ps1))) -Resume
+  & ([scriptblock]::Create((irm https://raw.githubusercontent.com/PLeonLopes/wslforge/v1.0.1/install.ps1))) -Resume
   ```
 
 </details>

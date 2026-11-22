@@ -51,3 +51,12 @@ Repeat the container test with `debian:13`, `fedora:latest`, `almalinux:9` and `
 Releases are published by the maintainer: merging a version bump with its `CHANGELOG.md` section creates the tag and the GitHub Release automatically. Contributors don't need to change the version.
 
 Changes to `install.ps1` must keep the file ASCII-only, because Windows PowerShell 5.1 misreads anything else. CI checks this with PSScriptAnalyzer. To try the questionnaire without setting anything up, run `.\install.ps1 -ConfigOnly` on Windows.
+
+## Project images
+
+The images in [`docs/media/`](docs/media) use the Forge palette (see the top of `lib/common.sh`). `social-preview.png` is the image GitHub shows when the repository link is shared. Its source is `social-preview.svg`. After editing the SVG, render the PNG (the fonts get baked into it) and upload it in **Settings → Social preview**:
+
+```sh
+docker run --rm -v "$PWD/docs/media":/m alpine:3.20 sh -c \
+  'apk add -q rsvg-convert font-inter font-jetbrains-mono && rsvg-convert -w 1280 -h 640 /m/social-preview.svg -o /m/social-preview.png'
+```
