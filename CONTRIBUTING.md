@@ -48,4 +48,6 @@ docker run --rm -v "$PWD":/src:ro ubuntu:24.04 bash -c \
 
 Repeat the container test with `debian:13`, `fedora:latest`, `almalinux:9` and `archlinux:latest` when your change touches packages. CI runs the same checks on every pull request. `./install.sh --dry-run` shows the plan and the commands without changing anything.
 
+Releases are published by the maintainer: merging a version bump with its `CHANGELOG.md` section creates the tag and the GitHub Release automatically. Contributors don't need to change the version.
+
 Changes to `install.ps1` must keep the file ASCII-only, because Windows PowerShell 5.1 misreads anything else. CI checks this with PSScriptAnalyzer. To try the questionnaire without setting anything up, run `.\install.ps1 -ConfigOnly` on Windows.

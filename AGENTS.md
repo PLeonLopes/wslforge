@@ -33,6 +33,8 @@
 - **Colors** come only from the Forge tokens at the top of `lib/common.sh`, and `NO_COLOR` must keep working.
 - **English only:** everything in the repository (code, comments, messages, docs, commits) is in English.
 - **Commits:** keep them atomic, with Conventional Commit subjects (`type(scope): summary`). Update `README.md` and `CHANGELOG.md` when modules, options or supported distros change.
+- **Releases:** the version lives in `install.sh` (`WSLFORGE_VERSION`) and `install.ps1` (`$WslforgeVersion`), and the two must match. Between releases it ends in `-dev`. To release, set both to the new version and add its `## [x.y.z]` section to `CHANGELOG.md`. On merge, `.github/workflows/release.yml` creates the tag and the GitHub Release. Never tag by hand.
+- **CI job names are required checks** (`.github/rulesets/main-required-checks.json`). Renaming a job or changing the distro matrix means updating that file and applying it again (see `.github/rulesets/README.md`).
 - **Real systems:** do not run real installs, create WSL distros or change `~\.wslconfig` on someone's machine without their explicit approval. Use containers and `--dry-run`.
 
 ## Useful commands
