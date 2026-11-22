@@ -3,6 +3,7 @@
 
 MODULE_NAME='Modern CLI tools'
 MODULE_ORDER=20
+MODULE_GROUP='Essentials'
 MODULE_DEFAULT=on
 MODULE_FAMILIES='apt dnf pacman'
 

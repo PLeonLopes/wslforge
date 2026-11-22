@@ -3,6 +3,7 @@
 
 MODULE_NAME='Base packages'
 MODULE_ORDER=10
+MODULE_GROUP='Essentials'
 MODULE_DEFAULT=on
 MODULE_REQUIRED=yes
 MODULE_FAMILIES='apt dnf pacman'

@@ -60,6 +60,7 @@ source "$WSLFORGE_DIR/lib/ui.sh"
 
 # Settings. Precedence: command-line flags > config file > defaults.
 ACTION=install
+LIST_MODULE=''  # --list MODULE: show one module in detail
 CONFIG_FILE=''
 ONLY=''
 SKIP_ARG=''
@@ -107,7 +108,7 @@ Usage: ./install.sh [options]
 Without options, an interactive menu asks what to install.
 
 Options:
-  --list           List the available modules and whether they are installed
+  --list [MODULE]  List the modules and what is installed (MODULE: in detail)
   --profile NAME   Install a preset: dev (default), minimal or full
   --only LIST      Install only these modules (comma-separated, e.g. git,cli)
   --skip LIST      Leave out modules or single tools (e.g. --skip tmux,htop)
@@ -126,6 +127,7 @@ A log of each run is saved to ~/.wslforge/install.log.
 Examples:
   ./install.sh                          # interactive menu
   ./install.sh --list                   # see every module and tool
+  ./install.sh --list cloud             # one module, with descriptions
   ./install.sh --profile minimal -y     # essentials only, no questions
   ./install.sh --skip tmux,htop         # default modules, minus two tools
   ./install.sh --only cli --skip bat    # just the CLI tools, without bat
@@ -135,7 +137,13 @@ EOF
 parse_args() {
   while (($#)); do
     case $1 in
-      --list) ACTION=list ;;
+      --list)
+        ACTION=list
+        if [[ $# -ge 2 && $2 != -* ]]; then
+          LIST_MODULE=$2
+          shift
+        fi
+        ;;
       --only)
         [[ $# -ge 2 ]] || die "--only needs a value (e.g. --only git,cli)"
         ONLY=$2
@@ -483,32 +491,76 @@ print_header() {
 
 # print_module_title ID: "id  Module name  [tag]"
 print_module_title() {
-  printf '\n  %s%-6s%s %s  %s[%s]%s\n' "$C_BOLD" "$1" "$C_RESET" \
+  printf '\n  %s%-10s%s %s  %s[%s]%s\n' "$C_BOLD" "$1" "$C_RESET" \
     "$(module_field "$1" MODULE_NAME)" "$C_ASH" "$(module_tag "$1")" "$C_RESET"
 }
 
-list_modules() {
-  local id item state desc flags mark extra
-  while IFS= read -r id; do
-    print_module_title "$id"
-    while IFS='|' read -r item state desc flags; do
-      mark='·'
-      [[ $state == installed ]] && mark="$C_MOSS✔$C_RESET"
-      extra=''
-      [[ $flags == *required* ]] && extra=" $C_ASH(required)$C_RESET"
-      if [[ $state == unavailable ]]; then
-        mark="$C_ASH○$C_RESET"
-        extra=" $C_ASH(unavailable on $DISTRO_ID)$C_RESET"
-      fi
-      printf '    %s %-16s %s%s\n' "$mark" "$item" "$desc" "$extra"
-    done < <(module_items "$id")
-  done < <(module_ids)
+# item_mark STATE: the symbol --list shows for a tool.
+item_mark() {
+  case $1 in
+    installed) printf '%s✔%s' "$C_MOSS" "$C_RESET" ;;
+    unavailable) printf '%s○%s' "$C_ASH" "$C_RESET" ;;
+    *) printf '·' ;;
+  esac
+}
+
+list_legend() {
   printf '\n  %s✔%s installed   · not installed   ○ unavailable on this distro\n' "$C_MOSS" "$C_RESET"
-  printf '  Leave tools or modules out with --skip, e.g. ./install.sh --skip tmux,htop\n\n'
+}
+
+# list_modules: one line per module (tools wrapped), grouped. With
+# --list MODULE, every tool of that module with its description.
+list_modules() {
+  local id group last='' item state desc flags word len indent=28 width=78
+  if [[ -n $LIST_MODULE ]]; then
+    list_module "$LIST_MODULE"
+    return 0
+  fi
+  while IFS= read -r id; do
+    group=$(module_field "$id" MODULE_GROUP)
+    if [[ $group != "$last" ]]; then
+      printf '\n  %s%s%s\n' "$C_BOLD$C_AMBER" "$group" "$C_RESET"
+      last=$group
+    fi
+    printf '    %s%-10s%s %s%-12s%s' "$C_BOLD" "$id" "$C_RESET" "$C_ASH" "$(module_tag "$id")" "$C_RESET"
+    len=$indent
+    while IFS='|' read -r item state desc flags; do
+      word="$(item_mark "$state") $item"
+      if ((len + ${#item} + 4 > width && len > indent)); then
+        printf '\n%*s' "$indent" ''
+        len=$indent
+      fi
+      printf '%s  ' "$word"
+      len=$((len + ${#item} + 4))
+    done < <(module_items "$id")
+    printf '\n'
+  done < <(module_ids)
+  list_legend
+  printf '  Details: ./install.sh --list <module>   Leave tools out: --skip tmux,htop\n\n'
+}
+
+# list_module ID: every tool of one module, with its description.
+list_module() {
+  local item state desc flags extra
+  [[ -f $MODULES_DIR/$1.sh ]] || die "Unknown module: $1 (see ./install.sh --list)"
+  print_module_title "$1"
+  while IFS='|' read -r item state desc flags; do
+    extra=''
+    [[ $flags == *required* ]] && extra=" $C_ASH(required)$C_RESET"
+    [[ $state == unavailable ]] && extra=" $C_ASH(unavailable on $DISTRO_ID)$C_RESET"
+    printf '    %s %-24s %s%s\n' "$(item_mark "$state")" "$item" "$desc" "$extra"
+  done < <(module_items "$1")
+  list_legend
+  echo
+}
+
+# print_wrapped MARK TEXT: an indented plan line, wrapped to the terminal.
+print_wrapped() {
+  printf '%s\n' "$2" | fold -s -w 66 | awk -v m="$1" '{ printf "      %s %s\n", (NR == 1 ? m : " "), $0 }'
 }
 
 print_plan() {
-  local id item state desc flags installed skipped unavailable modules_skipped=()
+  local id item state desc flags installed skipped unavailable missing modules_skipped=()
   log_step "Plan"
   for id in "${SELECTED[@]}"; do
     print_module_title "$id"
@@ -519,22 +571,26 @@ print_plan() {
     installed=()
     skipped=()
     unavailable=()
+    missing=()
     while IFS='|' read -r item state desc flags; do
       case $state in
         installed) installed+=("$item") ;;
         skipped) skipped+=("$item") ;;
         unavailable) unavailable+=("$item") ;;
-        *) printf '      %s+%s %-16s %s\n' "$C_EMBER" "$C_RESET" "$item" "$desc" ;;
+        *) missing+=("$item") ;;
       esac
     done < <(module_items "$id")
+    if ((${#missing[@]})); then
+      print_wrapped "$C_EMBER+$C_RESET" "$(join_by ', ' "${missing[@]}")"
+    fi
     if ((${#installed[@]})); then
-      printf '      %s↷ already installed: %s%s\n' "$C_ASH" "$(join_by ', ' "${installed[@]}")" "$C_RESET"
+      print_wrapped "$C_ASH↷$C_RESET" "already installed: $(join_by ', ' "${installed[@]}")"
     fi
     if ((${#skipped[@]})); then
-      printf '      %s- skipped: %s%s\n' "$C_ASH" "$(join_by ', ' "${skipped[@]}")" "$C_RESET"
+      print_wrapped "$C_ASH-$C_RESET" "skipped: $(join_by ', ' "${skipped[@]}")"
     fi
     if ((${#unavailable[@]})); then
-      printf '      %s○ unavailable on %s: %s%s\n' "$C_ASH" "$DISTRO_ID" "$(join_by ', ' "${unavailable[@]}")" "$C_RESET"
+      print_wrapped "$C_ASH○$C_RESET" "unavailable on $DISTRO_ID: $(join_by ', ' "${unavailable[@]}")"
     fi
   done
 
@@ -581,12 +637,12 @@ interactive_menu() {
   choice=$(ui_choose_one 'What would you like to install?' dev \
     "dev|dev       Recommended: $(profile_list dev)" \
     "minimal|minimal   Just the essentials: $(profile_list minimal)" \
-    "full|full      Everything available: $(profile_list full)" \
-    "custom|custom    Pick the tools one by one") || die 'Cancelled.'
+    "full|full      Everything: all $(wc -w <<<"$(profile_list full)") modules (optional ones included)" \
+    "custom|custom    Choose the modules and optionally single tools") || die 'Cancelled.'
   [[ -n $choice ]] || die 'Cancelled.'
 
   if [[ $choice == custom ]]; then
-    _menu_pick_tools
+    _menu_custom
   else
     PROFILE=$choice
   fi
@@ -596,35 +652,66 @@ interactive_menu() {
   fi
 }
 
-# _menu_pick_tools: one checklist with every optional tool. Modules with no
-# tool picked are left out; unpicked tools of the other modules are skipped.
-_menu_pick_tools() {
-  local id item state desc flags label on answer
-  local opts=() always=() picked=() modules=() skips=()
+# _menu_custom: a checklist of modules, grouped, then (only if asked) a
+# checklist with the tools of the picked modules. Fills MODULES and SKIP.
+_menu_custom() {
+  local id group last='' label on answer
+  local opts=() picked=() modules=()
   while IFS= read -r id; do
     module_supported "$id" || continue
-    while IFS='|' read -r item state desc flags; do
-      [[ $state == unavailable ]] && continue
-      if [[ $flags == *required* ]]; then
-        always+=("$item")
-        continue
-      fi
-      label=$(printf '%-7s %-12s %s' "$id" "$item" "$desc")
-      [[ $state == installed ]] && label+=' (installed)'
-      on=off
-      if profile_includes dev "$id"; then
-        on=on
-      fi
-      opts+=("$id:$item|$label|$on")
-    done < <(module_items "$id")
+    if [[ $(module_field "$id" MODULE_REQUIRED) == yes ]]; then
+      modules+=("$id")
+      continue
+    fi
+    group=$(module_field "$id" MODULE_GROUP)
+    [[ $group == "$last" ]] && group=''
+    [[ -n $group ]] && last=$group
+    label=$(printf '%-18s %-10s %s' "$group" "$id" "$(module_field "$id" MODULE_NAME)")
+    # (Not "| grep -q": with pipefail, grep exiting early fails the pipe.)
+    [[ $(module_items "$id") == *'|missing|'* ]] || label+='  (installed)'
+    on=off
+    if profile_includes dev "$id"; then
+      on=on
+    fi
+    opts+=("$id|$label|$on")
   done < <(module_ids)
 
-  answer=$(ui_choose_many "Pick the tools to install. Always installed: $(join_by ', ' "${always[@]}")" "${opts[@]}") ||
+  answer=$(ui_choose_many "Pick the modules. Base packages are always installed." "${opts[@]}") ||
     die 'Cancelled.'
   mapfile -t picked <<<"$answer"
+  for id in "${picked[@]}"; do
+    [[ -n $id ]] && modules+=("$id")
+  done
 
-  while IFS= read -r id; do
-    module_supported "$id" || continue
+  SKIP=''
+  SKIP_LIST=()
+  if ((${#modules[@]} > 1)) && ui_confirm 'Fine-tune single tools of these modules?' no; then
+    _menu_pick_tools "${modules[@]}"
+  fi
+  MODULES=$(join_by ',' "${modules[@]}")
+}
+
+# _menu_pick_tools MODULE...: one checklist with the optional tools of the
+# given modules, all on. Unpicked tools go to SKIP; modules left with no tool
+# are dropped from the "modules" array of _menu_custom.
+_menu_pick_tools() {
+  local id item state desc flags label first answer
+  local opts=() picked=() kept=() skips=()
+  for id in "$@"; do
+    first=$id
+    while IFS='|' read -r item state desc flags; do
+      [[ $flags == *required* || $state == unavailable ]] && continue
+      label=$(printf '%-10s %-24s %s' "$first" "$item" "$desc")
+      first=''
+      opts+=("$id:$item|$label|on")
+    done < <(module_items "$id")
+  done
+  ((${#opts[@]})) || return 0
+
+  answer=$(ui_choose_many 'Unselect the tools you do not want' "${opts[@]}") || die 'Cancelled.'
+  mapfile -t picked <<<"$answer"
+
+  for id in "$@"; do
     local any=0 module_skips=()
     while IFS='|' read -r item state desc flags; do
       [[ $flags == *required* || $state == unavailable ]] && continue
@@ -635,12 +722,11 @@ _menu_pick_tools() {
       fi
     done < <(module_items "$id")
     if ((any)) || [[ $(module_field "$id" MODULE_REQUIRED) == yes ]]; then
-      modules+=("$id")
+      kept+=("$id")
       skips+=("${module_skips[@]}")
     fi
-  done < <(module_ids)
-
-  MODULES=$(join_by ',' "${modules[@]}")
+  done
+  modules=("${kept[@]}")
   SKIP=$(join_by ',' "${skips[@]}")
   SKIP_LIST=("${skips[@]}")
 }
@@ -662,7 +748,7 @@ plan_needs_root() {
   for id in "${SELECTED[@]}"; do
     module_supported "$id" || continue
     [[ $(module_field "$id" MODULE_ROOT) == no ]] && continue
-    if module_items "$id" | grep -q '^[^|]*|missing|'; then
+    if [[ $(module_items "$id") == *'|missing|'* ]]; then
       return 0
     fi
   done
@@ -785,7 +871,10 @@ offer_followups() {
 # start_fresh_shell: replace this script with a login shell that has the new
 # PATH entries and groups. Typing "exit" returns to the previous shell.
 start_fresh_shell() {
-  local shell=${SHELL:-/bin/bash}
+  local shell
+  # The login shell may have just changed (the shell module can switch to zsh).
+  shell=$(getent passwd "$(id -un)" | cut -d: -f7)
+  [[ -x $shell ]] || shell=${SHELL:-/bin/bash}
   cleanup
   trap - EXIT
   log_info "Starting a fresh shell (type 'exit' to go back to the previous one)."
