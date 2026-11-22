@@ -1,0 +1,36 @@
+{
+  "name": "main: required checks",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["~DEFAULT_BRANCH"],
+      "exclude": []
+    }
+  },
+  "bypass_actors": [],
+  "rules": [
+    { "type": "deletion" },
+    { "type": "non_fast_forward" },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          { "context": "ShellCheck", "integration_id": 15368 },
+          { "context": "PSScriptAnalyzer", "integration_id": 15368 },
+          { "context": "Version and changelog", "integration_id": 15368 },
+          { "context": "Run through curl | bash", "integration_id": 15368 },
+          { "context": "Windows questionnaire (-Yes -ConfigOnly)", "integration_id": 15368 },
+          { "context": "Install twice (ubuntu:24.04, dev)", "integration_id": 15368 },
+          { "context": "Install twice (ubuntu:24.04, full)", "integration_id": 15368 },
+          { "context": "Install twice (debian:13, dev)", "integration_id": 15368 },
+          { "context": "Install twice (fedora:latest, dev)", "integration_id": 15368 },
+          { "context": "Install twice (almalinux:9, dev)", "integration_id": 15368 },
+          { "context": "Install twice (archlinux:latest, dev)", "integration_id": 15368 }
+        ]
+      }
+    }
+  ]
+}
