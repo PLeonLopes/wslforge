@@ -50,7 +50,7 @@ $RunOptions = @{
     Help       = [bool]$Help
 }
 
-$WslforgeVersion = '0.2.0-dev'
+$WslforgeVersion = '1.0.0'
 $GumVersion = '2.0.2'
 $StateDir = Join-Path $HOME '.wslforge'
 $DistroListUrl = 'https://raw.githubusercontent.com/microsoft/WSL/master/distributions/DistributionInfo.json'
