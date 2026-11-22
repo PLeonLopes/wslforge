@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="710" height="744" viewBox="0 0 710 744" role="img" aria-label="Windows Terminal running ./install.sh --list">
+<rect width="710" height="744" rx="8" fill="#202020"/>
+<rect y="40" width="710" height="704" fill="#0C0C0C"/>
+<path d="M0 736 V736 A8 8 0 0 0 8 744 H702 A8 8 0 0 0 710 736" fill="#0C0C0C"/>
+<path d="M8 40 V16 A8 8 0 0 1 16 8 H212 A8 8 0 0 1 220 16 V40 Z" fill="#0C0C0C"/>
+<rect x="20" y="17" width="16" height="14" rx="3" fill="#2B2622"/>
+<path d="M23.5 21 L27 24 L23.5 27" fill="none" stroke="#FF8A3D" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M28.5 27.5 H32.5" stroke="#FFC857" stroke-width="1.6" stroke-linecap="round"/>
+<text x="46" y="29" fill="#FFFFFF" font-family="'Segoe UI Variable', 'Segoe UI', ui-sans-serif, Helvetica, Arial, sans-serif" font-size="12.5">Debian</text>
+<path d="M200 20 L208 28 M208 20 L200 28" stroke="#C8C8C8" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M236 24 H248 M242 18 V30" stroke="#C8C8C8" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M264 22 L269 27 L274 22" fill="none" stroke="#C8C8C8" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M577 20.5 H587" stroke="#E0E0E0" stroke-width="1"/>
+<rect x="622.5" y="15.5" width="10" height="10" fill="none" stroke="#E0E0E0" stroke-width="1"/>
+<path d="M669 15.5 L679 25.5 M679 15.5 L669 25.5" stroke="#E0E0E0" stroke-width="1"/>
+<g font-family="Cascadia Mono, Cascadia Code, Consolas, ui-monospace, Menlo, DejaVu Sans Mono, monospace" font-size="14.3" xml:space="preserve">
+<text x="20.0" y="70" fill="#9CCC65" font-weight="700">you@Debian</text>
+<text x="106.0" y="70" fill="#E8E2DA">:</text>
+<text x="114.6" y="70" fill="#FFC857" font-weight="700">~</text>
+<text x="123.2" y="70" fill="#E8E2DA">$</text>
+<text x="140.4" y="70" fill="#E8E2DA">./install.sh</text><text x="252.2" y="70" fill="#E8E2DA">--list</text>
+<text x="20.0" y="90" fill="#FF8A3D" font-weight="700">wslforge</text>
+<text x="97.4" y="90" fill="#E8E2DA">1.0.0</text><text x="149.0" y="90" fill="#E8E2DA">on</text><text x="174.8" y="90" fill="#E8E2DA">Debian</text><text x="235.0" y="90" fill="#E8E2DA">GNU/Linux</text><text x="321.0" y="90" fill="#E8E2DA">13</text><text x="346.8" y="90" fill="#E8E2DA">(trixie)</text><text x="424.2" y="90" fill="#E8E2DA">(apt)</text>
+<text x="37.2" y="130" fill="#FFC857" font-weight="700">Essentials</text>
+<text x="54.4" y="150" fill="#E8E2DA" font-weight="700">base</text>
+<text x="149.0" y="150" fill="#8A817A">always</text>
+<text x="252.2" y="150" fill="#9CCC65">✔</text>
+<text x="269.4" y="150" fill="#E8E2DA">build-tools</text>
+<text x="381.2" y="150" fill="#9CCC65">✔</text>
+<text x="398.4" y="150" fill="#E8E2DA">ca-certificates</text>
+<text x="544.6" y="150" fill="#9CCC65">✔</text>
+<text x="561.8" y="150" fill="#E8E2DA">curl</text>
+<text x="613.4" y="150" fill="#9CCC65">✔</text>
+<text x="630.6" y="150" fill="#E8E2DA">gnupg</text>
+<text x="252.2" y="170" fill="#9CCC65">✔</text>
+<text x="269.4" y="170" fill="#E8E2DA">wget</text>
+<text x="321.0" y="170" fill="#9CCC65">✔</text>
+<text x="338.2" y="170" fill="#E8E2DA">zip</text>
+<text x="381.2" y="170" fill="#9CCC65">✔</text>
+<text x="398.4" y="170" fill="#E8E2DA">unzip</text>
+<text x="458.6" y="170" fill="#9CCC65">✔</text>
+<text x="475.8" y="170" fill="#E8E2DA">jq</text>
+<text x="510.2" y="170" fill="#9CCC65">✔</text>
+<text x="527.4" y="170" fill="#E8E2DA">htop</text>
+<text x="579.0" y="170" fill="#9CCC65">✔</text>
+<text x="596.2" y="170" fill="#E8E2DA">tree</text>
+<text x="252.2" y="190" fill="#9CCC65">✔</text>
+<text x="269.4" y="190" fill="#E8E2DA">less</text>
+<text x="54.4" y="210" fill="#E8E2DA" font-weight="700">cli</text>
+<text x="149.0" y="210" fill="#8A817A">default</text>
+<text x="252.2" y="210" fill="#9CCC65">✔</text>
+<text x="269.4" y="210" fill="#E8E2DA">ripgrep</text>
+<text x="346.8" y="210" fill="#9CCC65">✔</text>
+<text x="364.0" y="210" fill="#E8E2DA">fd</text>
+<text x="398.4" y="210" fill="#9CCC65">✔</text>
+<text x="415.6" y="210" fill="#E8E2DA">bat</text>
+<text x="458.6" y="210" fill="#9CCC65">✔</text>
+<text x="475.8" y="210" fill="#E8E2DA">fzf</text>
+<text x="518.8" y="210" fill="#9CCC65">✔</text>
+<text x="536.0" y="210" fill="#E8E2DA">tmux</text>
+<text x="54.4" y="230" fill="#E8E2DA" font-weight="700">git</text>
+<text x="149.0" y="230" fill="#8A817A">default</text>
+<text x="252.2" y="230" fill="#9CCC65">✔</text>
+<text x="269.4" y="230" fill="#E8E2DA">git</text>
+<text x="312.4" y="230" fill="#9CCC65">✔</text>
+<text x="329.6" y="230" fill="#E8E2DA">git-lfs</text>
+<text x="407.0" y="230" fill="#9CCC65">✔</text>
+<text x="424.2" y="230" fill="#E8E2DA">ssh-client</text>
+<text x="527.4" y="230" fill="#9CCC65">✔</text>
+<text x="544.6" y="230" fill="#E8E2DA">gh</text>
+<text x="37.2" y="270" fill="#FFC857" font-weight="700">Languages</text>
+<text x="54.4" y="290" fill="#E8E2DA" font-weight="700">python</text>
+<text x="149.0" y="290" fill="#8A817A">default</text>
+<text x="252.2" y="290" fill="#9CCC65">✔</text>
+<text x="269.4" y="290" fill="#E8E2DA">uv</text>
+<text x="303.8" y="290" fill="#9CCC65">✔</text>
+<text x="321.0" y="290" fill="#E8E2DA">python</text>
+<text x="54.4" y="310" fill="#E8E2DA" font-weight="700">node</text>
+<text x="149.0" y="310" fill="#8A817A">default</text>
+<text x="252.2" y="310" fill="#9CCC65">✔</text>
+<text x="269.4" y="310" fill="#E8E2DA">node</text>
+<text x="321.0" y="310" fill="#9CCC65">✔</text>
+<text x="338.2" y="310" fill="#E8E2DA">pnpm</text>
+<text x="54.4" y="330" fill="#E8E2DA" font-weight="700">go</text>
+<text x="149.0" y="330" fill="#8A817A">optional</text>
+<text x="252.2" y="330" fill="#E8E2DA">·</text><text x="269.4" y="330" fill="#E8E2DA">go</text>
+<text x="54.4" y="350" fill="#E8E2DA" font-weight="700">rust</text>
+<text x="149.0" y="350" fill="#8A817A">optional</text>
+<text x="252.2" y="350" fill="#E8E2DA">·</text><text x="269.4" y="350" fill="#E8E2DA">rust</text>
+<text x="37.2" y="390" fill="#FFC857" font-weight="700">Containers</text><text x="131.8" y="390" fill="#FFC857" font-weight="700">&amp;</text><text x="149.0" y="390" fill="#FFC857" font-weight="700">Cloud</text>
+<text x="54.4" y="410" fill="#E8E2DA" font-weight="700">docker</text>
+<text x="149.0" y="410" fill="#8A817A">default</text>
+<text x="252.2" y="410" fill="#9CCC65">✔</text>
+<text x="269.4" y="410" fill="#E8E2DA">docker</text>
+<text x="54.4" y="430" fill="#E8E2DA" font-weight="700">cloud</text>
+<text x="149.0" y="430" fill="#8A817A">optional</text>
+<text x="252.2" y="430" fill="#E8E2DA">·</text><text x="269.4" y="430" fill="#E8E2DA">aws</text><text x="312.4" y="430" fill="#E8E2DA">·</text><text x="329.6" y="430" fill="#E8E2DA">azure</text><text x="389.8" y="430" fill="#E8E2DA">·</text><text x="407.0" y="430" fill="#E8E2DA">gcloud</text><text x="475.8" y="430" fill="#E8E2DA">·</text><text x="493.0" y="430" fill="#E8E2DA">terraform</text><text x="587.6" y="430" fill="#E8E2DA">·</text><text x="604.8" y="430" fill="#E8E2DA">kubectl</text>
+<text x="252.2" y="450" fill="#E8E2DA">·</text><text x="269.4" y="450" fill="#E8E2DA">helm</text>
+<text x="37.2" y="490" fill="#FFC857" font-weight="700">Databases</text>
+<text x="54.4" y="510" fill="#E8E2DA" font-weight="700">db-clients</text>
+<text x="149.0" y="510" fill="#8A817A">optional</text>
+<text x="252.2" y="510" fill="#E8E2DA">·</text><text x="269.4" y="510" fill="#E8E2DA">psql</text><text x="321.0" y="510" fill="#E8E2DA">·</text><text x="338.2" y="510" fill="#E8E2DA">mysql</text><text x="398.4" y="510" fill="#E8E2DA">·</text><text x="415.6" y="510" fill="#E8E2DA">redis-cli</text><text x="510.2" y="510" fill="#E8E2DA">·</text><text x="527.4" y="510" fill="#E8E2DA">sqlite3</text>
+<text x="37.2" y="550" fill="#FFC857" font-weight="700">AI</text>
+<text x="54.4" y="570" fill="#E8E2DA" font-weight="700">claude</text>
+<text x="149.0" y="570" fill="#8A817A">default</text>
+<text x="252.2" y="570" fill="#9CCC65">✔</text>
+<text x="269.4" y="570" fill="#E8E2DA">claude</text>
+<text x="37.2" y="610" fill="#FFC857" font-weight="700">Shell</text>
+<text x="54.4" y="630" fill="#E8E2DA" font-weight="700">shell</text>
+<text x="149.0" y="630" fill="#8A817A">optional</text>
+<text x="252.2" y="630" fill="#E8E2DA">·</text><text x="269.4" y="630" fill="#E8E2DA">zsh</text><text x="312.4" y="630" fill="#E8E2DA">·</text><text x="329.6" y="630" fill="#E8E2DA">starship</text><text x="415.6" y="630" fill="#E8E2DA">·</text><text x="432.8" y="630" fill="#E8E2DA">zsh-autosuggestions</text>
+<text x="252.2" y="650" fill="#E8E2DA">·</text><text x="269.4" y="650" fill="#E8E2DA">zsh-syntax-highlighting</text><text x="484.4" y="650" fill="#E8E2DA">·</text><text x="501.6" y="650" fill="#E8E2DA">default-shell</text>
+<text x="37.2" y="690" fill="#9CCC65">✔</text>
+<text x="54.4" y="690" fill="#E8E2DA">installed</text><text x="157.6" y="690" fill="#E8E2DA">·</text><text x="174.8" y="690" fill="#E8E2DA">not</text><text x="209.2" y="690" fill="#E8E2DA">installed</text><text x="312.4" y="690" fill="#E8E2DA">○</text><text x="329.6" y="690" fill="#E8E2DA">unavailable</text><text x="432.8" y="690" fill="#E8E2DA">on</text><text x="458.6" y="690" fill="#E8E2DA">this</text><text x="501.6" y="690" fill="#E8E2DA">distro</text>
+<text x="37.2" y="710" fill="#E8E2DA">Details:</text><text x="114.6" y="710" fill="#E8E2DA">./install.sh</text><text x="226.4" y="710" fill="#E8E2DA">--list</text><text x="286.6" y="710" fill="#E8E2DA">&lt;module&gt;</text><text x="381.2" y="710" fill="#E8E2DA">Leave</text><text x="432.8" y="710" fill="#E8E2DA">tools</text><text x="484.4" y="710" fill="#E8E2DA">out:</text><text x="527.4" y="710" fill="#E8E2DA">--skip</text><text x="587.6" y="710" fill="#E8E2DA">tmux,htop</text>
+</g></svg>

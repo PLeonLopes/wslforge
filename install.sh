@@ -4,7 +4,7 @@
 # Idempotent: safe to re-run; modules that are already installed are skipped.
 set -euo pipefail
 
-WSLFORGE_VERSION='0.2.0-dev'
+WSLFORGE_VERSION='1.0.0'
 WSLFORGE_REPO_URL=${WSLFORGE_REPO_URL:-https://github.com/PLeonLopes/wslforge}
 
 # bootstrap_remote ARGS...: under "curl ... | bash" there is no lib/ or
@@ -511,7 +511,7 @@ list_legend() {
 # list_modules: one line per module (tools wrapped), grouped. With
 # --list MODULE, every tool of that module with its description.
 list_modules() {
-  local id group last='' item state desc flags word len indent=28 width=78
+  local id group last='' item state desc flags word len indent=27 width=78
   if [[ -n $LIST_MODULE ]]; then
     list_module "$LIST_MODULE"
     return 0

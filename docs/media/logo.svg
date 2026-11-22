@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-labelledby="t">
+  <title id="t">wslforge: an anvil under a terminal prompt, with sparks</title>
+  <rect width="128" height="128" rx="28" fill="#1A1410"/>
+  <!-- terminal prompt -->
+  <path d="M30 34 L44 44 L30 54" fill="none" stroke="#FF8A3D" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="50" y="48" width="22" height="7" rx="3.5" fill="#FFC857"/>
+  <!-- sparks -->
+  <circle cx="84" cy="34" r="4" fill="#FFC857"/>
+  <circle cx="97" cy="44" r="3" fill="#FF8A3D"/>
+  <circle cx="95" cy="27" r="2.5" fill="#FFC857"/>
+  <!-- anvil -->
+  <path d="M26 66 H98 C98 74 92 78 84 78 H76 V86 H86 L90 98 H38 L42 86 H52 V78 H44 C34 78 26 74 26 66 Z" fill="#FF8A3D"/>
+</svg>

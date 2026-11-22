@@ -1,0 +1,58 @@
+name: Bug report
+description: Something failed or behaved unexpectedly during a setup.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! The details below help reproduce the problem on the same distro.
+  - type: dropdown
+    id: side
+    attributes:
+      label: Where did it happen?
+      options:
+        - On Windows (install.ps1)
+        - Inside Linux (install.sh)
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distro and version
+      description: For example "Ubuntu 24.04", "Fedora 45" or "Arch Linux". Run `cat /etc/os-release` if unsure.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: wslforge version
+      description: Shown by `./install.sh --version`, or in the first lines of the output.
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows and WSL versions
+      description: Only for problems on the Windows side. Run `wsl --version` in PowerShell.
+  - type: input
+    id: command
+    attributes:
+      label: Command you ran
+      placeholder: curl -fsSL https://raw.githubusercontent.com/PLeonLopes/wslforge/v1.0.0/install.sh | bash -s -- --profile full
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead. Which tool failed in the summary?
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The end of `~/.wslforge/install.log` (for example `tail -n 60 ~/.wslforge/install.log`). Remove anything private first.
+      render: text

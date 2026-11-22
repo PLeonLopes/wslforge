@@ -1,0 +1,39 @@
+name: Tool request
+description: Ask for a new tool or module, or a change to an existing one.
+labels: [enhancement]
+body:
+  - type: input
+    id: tool
+    attributes:
+      label: Tool
+      description: Its name and website.
+      placeholder: Java (Temurin) through SDKMAN, https://sdkman.io
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What would you use it for?
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How is it installed?
+      description: The official way to install it on Linux, if you know it (a distro package, a vendor repository, a release download).
+  - type: dropdown
+    id: default
+    attributes:
+      label: Should it be part of the default `dev` profile?
+      description: Most new tools start as optional, so the default setup stays lean.
+      options:
+        - No, optional is fine
+        - Yes, most developers need it
+    validations:
+      required: true
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I would like to open a pull request for it (see CONTRIBUTING.md).
