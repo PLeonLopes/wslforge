@@ -4,7 +4,7 @@
 # Idempotent: safe to re-run; modules that are already installed are skipped.
 set -euo pipefail
 
-WSLFORGE_VERSION='1.0.0'
+WSLFORGE_VERSION='1.0.1'
 WSLFORGE_REPO_URL=${WSLFORGE_REPO_URL:-https://github.com/PLeonLopes/wslforge}
 
 # bootstrap_remote ARGS...: under "curl ... | bash" there is no lib/ or

@@ -20,7 +20,7 @@
 <text x="123.2" y="70" fill="#E8E2DA">$</text>
 <text x="140.4" y="70" fill="#E8E2DA">./install.sh</text><text x="252.2" y="70" fill="#E8E2DA">--list</text><text x="312.4" y="70" fill="#E8E2DA">cloud</text>
 <text x="20.0" y="90" fill="#FF8A3D" font-weight="700">wslforge</text>
-<text x="97.4" y="90" fill="#E8E2DA">1.0.0</text><text x="149.0" y="90" fill="#E8E2DA">on</text><text x="174.8" y="90" fill="#E8E2DA">Debian</text><text x="235.0" y="90" fill="#E8E2DA">GNU/Linux</text><text x="321.0" y="90" fill="#E8E2DA">13</text><text x="346.8" y="90" fill="#E8E2DA">(trixie)</text><text x="424.2" y="90" fill="#E8E2DA">(apt)</text>
+<text x="97.4" y="90" fill="#E8E2DA">1.0.1</text><text x="149.0" y="90" fill="#E8E2DA">on</text><text x="174.8" y="90" fill="#E8E2DA">Debian</text><text x="235.0" y="90" fill="#E8E2DA">GNU/Linux</text><text x="321.0" y="90" fill="#E8E2DA">13</text><text x="346.8" y="90" fill="#E8E2DA">(trixie)</text><text x="424.2" y="90" fill="#E8E2DA">(apt)</text>
 <text x="37.2" y="130" fill="#E8E2DA" font-weight="700">cloud</text>
 <text x="131.8" y="130" fill="#E8E2DA">Cloud</text><text x="183.4" y="130" fill="#E8E2DA">CLIs</text>
 <text x="235.0" y="130" fill="#8A817A">[optional]</text>

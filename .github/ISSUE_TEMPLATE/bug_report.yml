@@ -28,7 +28,7 @@ body:
     attributes:
       label: wslforge version
       description: Shown by `./install.sh --version`, or in the first lines of the output.
-      placeholder: 1.0.0
+      placeholder: 1.0.1
     validations:
       required: true
   - type: input
@@ -40,7 +40,7 @@ body:
     id: command
     attributes:
       label: Command you ran
-      placeholder: curl -fsSL https://raw.githubusercontent.com/PLeonLopes/wslforge/v1.0.0/install.sh | bash -s -- --profile full
+      placeholder: curl -fsSL https://raw.githubusercontent.com/PLeonLopes/wslforge/<version>/install.sh | bash -s -- --profile full
     validations:
       required: true
   - type: textarea
