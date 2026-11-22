@@ -933,7 +933,7 @@ main() {
 
   validate_skips
   pkg_require_supported
-  is_wsl || log_warn "This does not look like WSL; continuing anyway."
+  is_wsl || log_info "Not running in WSL: the WSL-specific steps are skipped."
 
   # The menu shows up when nothing was chosen through flags or a config file.
   if ((INTERACTIVE)) && [[ -z $ONLY$SKIP_ARG$PROFILE_ARG$CONFIG_FILE ]]; then
